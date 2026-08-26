@@ -1,0 +1,41 @@
+{
+  "name": "hind-event-scraper",
+  "version": "1.0.0",
+  "description": "Event scraper and automation for Hind Social using Apify and Apollo",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "server": "ts-node src/server.ts",
+    "dev": "ts-node src/server.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@tavily/core": "^0.7.7",
+    "@types/pg": "^8.23.1",
+    "apify-client": "^2.9.0",
+    "axios": "^1.6.8",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "form-data": "^4.0.6",
+    "node-cron": "^4.6.0",
+    "openai": "^7.4.0",
+    "pg": "^8.23.0",
+    "playwright": "^1.62.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/form-data": "^2.5.2",
+    "@types/node": "^20.11.30",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^9.0.8",
+    "concurrently": "^10.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.3"
+  }
+}
