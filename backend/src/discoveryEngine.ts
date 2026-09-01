@@ -64,7 +64,30 @@ export async function runDailyDiscovery() {
                     
                     // For townscript, ignore unpublished draft URLs which usually don't have enough structure
                     if (lowerLink.includes('townscript.com/e/') && lowerLink.length < 35) {
-                         // Some very short URLs might be just the domain or basic paths, but usually event URLs are longer
+                         return false;
+                    }
+
+                    // Platform specific strict event URL structures
+                    if (platform.domain === 'allevents.in') {
+                        // valid events usually end with a long ID or use /e/
+                        if (!/\/\d{10,}$/.test(lowerLink) && !lowerLink.includes('/e/')) {
+                            return false;
+                        }
+                    }
+                    if (platform.domain === 'tykkit.com') {
+                        // valid events must have /events/ or /e/
+                        if (!lowerLink.includes('/events/') && !lowerLink.includes('/e/')) {
+                            return false;
+                        }
+                    }
+                    if (platform.domain === 'wowsly.com') {
+                        // valid events must have /e/ or /event/
+                        if (!lowerLink.includes('/e/') && !lowerLink.includes('/event/')) {
+                            return false;
+                        }
+                    }
+                    if (lowerLink.includes('localhost')) {
+                        return false;
                     }
                     
                     return true;

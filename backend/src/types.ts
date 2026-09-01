@@ -58,4 +58,5 @@ export interface HindEventPayload {
     _organizerNames?: string;
     timezoneOffset?: string;
     endTime?: string;
+    city?: string;
 }

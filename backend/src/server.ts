@@ -1,3 +1,4 @@
+import { fetchGoogleBusinessDetails } from './googleBusinessFetcher';
 import express from 'express';
 import cors from 'cors';
 import { getDashboardData, getOrgContacts, getOrgEvents, getCities, pool } from './db';
@@ -33,7 +34,8 @@ app.get('/api/org/:id/contacts', async (req, res) => {
 
 app.get('/api/org/:id/events', async (req, res) => {
     try {
-        const data = await getOrgEvents(req.params.id);
+        const city = req.query.city as string | undefined;
+        const data = await getOrgEvents(req.params.id, city);
         res.json(data);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -128,6 +130,26 @@ app.get('/api/scrape', async (req, res) => {
     };
 
     try {
+        try {
+            const { pool } = await import('./db');
+            const { rows: platforms } = await pool.query('SELECT id, domain FROM scraping_platforms');
+            let matchedPlatformId = null;
+            for (const p of platforms) {
+                if (targetUrl.includes(p.domain)) {
+                    matchedPlatformId = p.id;
+                    break;
+                }
+            }
+            await pool.query(
+                `INSERT INTO scraped_urls_history (url, platform_id, status, source) 
+                 VALUES ($1, $2, 'success', 'manual') 
+                 ON CONFLICT (url) DO UPDATE SET source = 'manual', discovered_at = NOW()`,
+                [targetUrl, matchedPlatformId]
+            );
+        } catch (dbErr) {
+            console.error("Failed to log manual scrape to history:", dbErr);
+        }
+
         await processUrl(targetUrl, logCallback);
         res.write(`data: ${JSON.stringify({ type: 'done', message: 'Scraping complete.' })}\n\n`);
     } catch (err: any) {
@@ -265,8 +287,9 @@ app.delete('/api/events/:id', async (req, res) => {
 // ----------------- PENDING SCRAPES ENDPOINTS -----------------
 app.get('/api/pending-scrapes', async (req, res) => {
     try {
+        const city = req.query.city as string | undefined;
         const { getPendingScrapes } = await import('./db');
-        const data = await getPendingScrapes();
+        const data = await getPendingScrapes(city);
         res.json(data);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -290,6 +313,15 @@ app.post('/api/pending-scrapes/:id/reject', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+app.put('/api/pending-scrapes/:id', async (req, res) => {
+    try {
+        const payload = req.body.payload;
+        if (!payload) return res.status(400).json({ error: "Missing payload" });
+        await pool.query('UPDATE pending_scrapes SET payload = $1 WHERE id = $2', [JSON.stringify(payload), req.params.id]);
+        res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Platform Management & Scraped URLs Endpoints =====
 
 app.get('/api/platforms', async (req, res) => {
@@ -305,6 +337,19 @@ app.put('/api/platforms/:id/toggle', async (req, res) => {
     try {
         const { is_active } = req.body;
         await pool.query('UPDATE scraping_platforms SET is_active = $1 WHERE id = $2', [is_active, req.params.id]);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.put('/api/platforms/:id', async (req, res) => {
+    try {
+        const { name, domain, search_path } = req.body;
+        await pool.query(
+            'UPDATE scraping_platforms SET name = $1, domain = $2, search_path = $3 WHERE id = $4',
+            [name, domain, search_path, req.params.id]
+        );
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -358,6 +403,22 @@ cron.schedule('15 16 * * *', async () => {
 app.post('/api/debug/run-discovery', async (req, res) => {
     runDailyDiscovery(); // run asynchronously
     res.json({ message: 'Discovery engine started in background' });
+});
+
+
+app.post('/api/sync-google-business', async (req, res) => {
+    try {
+        const { orgName, googleBusinessLink } = req.body;
+        if (!orgName) {
+            res.status(400).json({ error: 'orgName is required' });
+            return;
+        }
+        
+        const data = await fetchGoogleBusinessDetails(orgName, googleBusinessLink);
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.listen(PORT, () => {

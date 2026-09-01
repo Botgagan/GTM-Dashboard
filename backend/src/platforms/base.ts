@@ -238,6 +238,7 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
     let aiEndDate = "";
     let aiEndTime = "";
     let timezoneOffset = "+05:30";
+    let aiCity = "Unknown";
     
     try {
         const prompt = `Read this event description and full page text carefully.
@@ -264,9 +265,10 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
         14. endDate: Extract the OVERALL ending date of the actual event in YYYY-MM-DD format (e.g., "2026-08-31"). CRITICAL: DO NOT extract ticket phase ending dates. If the year is not mentioned, assume "2026". If no end date is mentioned, use the startDate.
         15. cleanTitle: Clean up the provided Title by removing any website suffixes (e.g. "| MeraEvents" or "- Eventbrite").
         16. timezoneOffset: Extract the timezone offset from the page if mentioned (e.g., if PST/PDT write "-07:00", if EST/EDT write "-04:00", if UTC write "+00:00"). If no timezone is mentioned, assume IST and write "+05:30".
+        17. city: Intelligently extract the main city name from the "Location Name" or description (e.g. if location is "Vinoba AshramGotri Rd, Gotri, Vadodara, Gujarat", extract "Vadodara"). If it's an online event, webinar, or virtual stream, return "Online". If unknown, write "Unknown".
         
         Example Output:
-        {"venueAmenities": "Parking, Food", "refundPolicy": "Tickets are non-cancelable", "price": "284", "durationMinutes": "270", "startTime": "14:30:00", "endTime": "23:00:00", "latitude": 23.0225, "longitude": 72.5714, "frequency": "week", "daysOfWeek": "Saturday", "eventType": "offline", "organizerNames": ["Dream Deviser", "Mukesh Hardware"], "startDate": "2026-08-29", "endDate": "2026-08-31", "cleanTitle": "The Final Draft", "timezoneOffset": "+05:30"};`;
+        {"venueAmenities": "Parking, Food", "refundPolicy": "Tickets are non-cancelable", "price": "284", "durationMinutes": "270", "startTime": "14:30:00", "endTime": "23:00:00", "latitude": 23.0225, "longitude": 72.5714, "frequency": "week", "daysOfWeek": "Saturday", "eventType": "offline", "organizerNames": ["Dream Deviser", "Mukesh Hardware"], "startDate": "2026-08-29", "endDate": "2026-08-31", "cleanTitle": "The Final Draft", "timezoneOffset": "+05:30", "city": "Vadodara"};`;
 
         const response = await openai.chat.completions.create({
             model: "openai/gpt-4o-mini",
@@ -296,6 +298,7 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
             if (aiData.endDate) aiEndDate = aiData.endDate;
             if (aiData.cleanTitle) aiTitle = aiData.cleanTitle;
             if (aiData.timezoneOffset) timezoneOffset = aiData.timezoneOffset;
+            if (aiData.city) aiCity = aiData.city;
         }
         
         if (date === "2026-08-15" && aiStartDate) date = aiStartDate;
@@ -420,6 +423,7 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
         eventContent: scrapedEvent.eventContent || description,
         _organizerNames: JSON.stringify(organizerNames.length > 0 ? organizerNames : ["Unknown Organizer"]),
         timezoneOffset: timezoneOffset,
-        endTime: aiEndTime
+        endTime: aiEndTime,
+        city: aiCity
     };
 };

@@ -158,12 +158,20 @@ export async function markOrgAsContacted(orgId: string) {
 // ─────────────────────────────────────────────
 // Event helpers
 // ─────────────────────────────────────────────
-export async function getOrgEvents(orgId: string) {
-    const res = await pool.query(
-        `SELECT * FROM events WHERE org_id = $1 ORDER BY created_at DESC`,
-        [orgId]
-    );
-    return res.rows;
+export async function getOrgEvents(orgId: string, city?: string) {
+    if (city) {
+        const res = await pool.query(
+            `SELECT * FROM events WHERE org_id = $1 AND location ILIKE $2 ORDER BY created_at DESC`,
+            [orgId, `%${city}%`]
+        );
+        return res.rows;
+    } else {
+        const res = await pool.query(
+            `SELECT * FROM events WHERE org_id = $1 ORDER BY created_at DESC`,
+            [orgId]
+        );
+        return res.rows;
+    }
 }
 
 export async function insertEvent(data: {
@@ -240,40 +248,65 @@ export async function completePipelineRun(runId: string, orgId: string | null, s
 // Dashboard query — full data for all 3 tabs
 // ─────────────────────────────────────────────
 export async function getDashboardData(city?: string) {
-    const cityFilter = city ? `AND o.city ILIKE $1` : '';
-    const params = city ? [`%${city}%`] : [];
-
-    const orgs = await pool.query(
-        `SELECT
+    let query = `
+        SELECT
             o.*,
             COUNT(DISTINCT c.id)::int AS contacts_count,
             COUNT(DISTINCT e.id)::int AS events_count
-         FROM organizations o
-         LEFT JOIN contacts c ON c.org_id = o.id
-         LEFT JOIN events e ON e.org_id = o.id
-         WHERE 1=1 ${cityFilter}
-         GROUP BY o.id
-         ORDER BY o.created_at DESC`,
-        params
-    );
+        FROM organizations o
+        LEFT JOIN contacts c ON c.org_id = o.id
+    `;
+    
+    let params: any[] = [];
+    
+    if (city) {
+        query += ` LEFT JOIN events e ON e.org_id = o.id AND e.location ILIKE $1`;
+        params.push(`%${city}%`);
+    } else {
+        query += ` LEFT JOIN events e ON e.org_id = o.id`;
+    }
+    
+    query += ` GROUP BY o.id`;
+    
+    if (city) {
+        query += ` HAVING COUNT(DISTINCT e.id) > 0`;
+    }
+    
+    query += ` ORDER BY o.created_at DESC`;
 
+    const orgs = await pool.query(query, params);
     return orgs.rows;
 }
 
 
 export async function getCities() {
-    const res = await pool.query(
-        `SELECT DISTINCT city FROM organizations WHERE city IS NOT NULL ORDER BY city`
-    );
-    return res.rows.map((r: any) => r.city);
+    const res = await pool.query(`SELECT DISTINCT location FROM events WHERE location IS NOT NULL AND location != 'Online'`);
+    const rawLocations = res.rows.map(r => r.location);
+    const cities = new Set<string>();
+    for (const loc of rawLocations) {
+        const parts = loc.split(',');
+        const city = parts[parts.length - 1].trim();
+        if (city) cities.add(city);
+    }
+    return Array.from(cities).sort();
 }
 
 // ─────────────────────────────────────────────
 // Pending Scrapes
 // ─────────────────────────────────────────────
-export async function getPendingScrapes() {
-    const res = await pool.query(`SELECT * FROM pending_scrapes ORDER BY created_at DESC`);
-    return res.rows;
+export async function getPendingScrapes(city?: string) {
+    if (city) {
+        const res = await pool.query(
+            `SELECT * FROM pending_scrapes 
+             WHERE payload::jsonb -> 'mappedEventData' ->> 'location' ILIKE $1 
+             ORDER BY created_at DESC`,
+            [`%${city}%`]
+        );
+        return res.rows;
+    } else {
+        const res = await pool.query(`SELECT * FROM pending_scrapes ORDER BY created_at DESC`);
+        return res.rows;
+    }
 }
 
 export async function getPendingScrapeById(id: string) {

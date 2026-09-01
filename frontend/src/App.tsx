@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { EditableOrgForm } from './EditableOrgForm';
+import { EditableEventForm } from './EditableEventForm';
+import React, { useState, useEffect, useRef } from 'react';
 import { Send, CheckCircle, XCircle, AlertCircle, MoreHorizontal, Edit, Trash, Plus, Link as LinkIcon, Search, Play, Activity, RefreshCw, Users, Calendar, Settings } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -352,7 +354,7 @@ function ScrapedEventsPanel({ pendingScrapes, onRefresh }: { pendingScrapes: any
   const [expandedPending, setExpandedPending] = useState<{ id: string, type: 'org' | 'contacts' } | null>(null);
 
   const activeScrape = expandedPending ? pendingScrapes.find(s => s.id === expandedPending.id) : null;
-  const payload = activeScrape ? (typeof activeScrape.payload === 'string' ? JSON.parse(activeScrape.payload) : activeScrape.payload) : null;
+  
 
   return (
     <>
@@ -388,111 +390,20 @@ function ScrapedEventsPanel({ pendingScrapes, onRefresh }: { pendingScrapes: any
         </TableBody>
       </Table>
 
-      <Dialog open={expandedPending !== null} onOpenChange={(isOpen) => !isOpen && setExpandedPending(null)}>
-        <DialogContent className="sm:max-w-[90vw] w-[90vw] h-[85vh] sm:max-h-[85vh] flex flex-col p-6">
-          {payload && (
-            <>
-              <DialogHeader className="flex-shrink-0">
-                <DialogTitle className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-                  {expandedPending?.type === 'org' ? (
-                    <><Users className="w-5 h-5 text-indigo-600"/> Organization Details for {payload.eventTitle}</>
-                  ) : (
-                    <><Users className="w-5 h-5 text-blue-600"/> Contacts for {payload.primaryOrganizer}</>
-                  )}
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="mt-4 flex-1 overflow-auto border rounded-md shadow-sm bg-white p-6">
-                {expandedPending?.type === 'org' ? (
-                  <div className="min-w-[1200px] space-y-4">
-                    <div className="rounded-md border bg-card">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Organization Name</TableHead>
-                            <TableHead>Address</TableHead>
-                            <TableHead>Website</TableHead>
-                            <TableHead>Contacts</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell className="font-medium text-base text-slate-900">{payload.primaryOrganizer}</TableCell>
-                            <TableCell className="max-w-[300px] truncate" title={payload.contactInfo.address || 'N/A'}>{payload.contactInfo.address || 'N/A'}</TableCell>
-                            <TableCell>
-                              {payload.contactInfo.website ? <a href={payload.contactInfo.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-1"><LinkIcon className="w-3 h-3" /> Website</a> : 'N/A'}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                 <span className="font-semibold">{payload.contactInfo.emails.length + payload.contactInfo.phones.length}</span>
-                                 <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={() => setExpandedPending({ id: activeScrape.id, type: 'contacts' })}>View</Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="min-w-[1200px] space-y-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-sm font-medium leading-none">Extracted Contacts <Badge variant="secondary" className="ml-2">{payload.contactInfo.emails.length + payload.contactInfo.phones.length}</Badge></h3>
-                      <Button variant="outline" size="sm" onClick={() => setExpandedPending({ id: activeScrape.id, type: 'org' })}>
-                        ← Back to Organization
-                      </Button>
-                    </div>
-                    <div className="rounded-md border bg-card">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name / Title</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Phone</TableHead>
-                            <TableHead>Social</TableHead>
-                            <TableHead>Source</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {payload.contactInfo.emails.length === 0 && payload.contactInfo.phones.length === 0 ? (
-                             <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">No contacts found.</TableCell></TableRow>
-                          ) : (
-                            <>
-                              {payload.contactInfo.emails.map((email: string, i: number) => (
-                                <TableRow key={`e-${i}`}>
-                                  <TableCell className="text-muted-foreground">-</TableCell>
-                                  <TableCell className="font-medium">{email}</TableCell>
-                                  <TableCell className="text-muted-foreground">-</TableCell>
-                                  <TableCell className="text-muted-foreground">-</TableCell>
-                                  <TableCell><Badge variant="secondary" className="font-normal text-xs">Google AI</Badge></TableCell>
-                                </TableRow>
-                              ))}
-                              {payload.contactInfo.phones.map((phone: string, i: number) => (
-                                <TableRow key={`p-${i}`}>
-                                  <TableCell className="text-muted-foreground">-</TableCell>
-                                  <TableCell className="text-muted-foreground">-</TableCell>
-                                  <TableCell className="font-medium">{phone}</TableCell>
-                                  <TableCell className="text-muted-foreground">-</TableCell>
-                                  <TableCell><Badge variant="secondary" className="font-normal text-xs">Google AI</Badge></TableCell>
-                                </TableRow>
-                              ))}
-                            </>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+            {expandedPending !== null && activeScrape && (
+        <EditableOrgForm 
+          scrape={activeScrape} 
+          onRefresh={onRefresh} 
+          onClose={() => setExpandedPending(null)} 
+        />
+      )}
     </>
   );
 }
 
 function PendingEventRow({ scrape, onRefresh, onViewOrg }: { scrape: any, onRefresh: () => void, onViewOrg: () => void }) {
   const [isApproving, setIsApproving] = useState(false);
+  const [isEditingEvent, setIsEditingEvent] = useState(false);
   
   const payload = typeof scrape.payload === 'string' ? JSON.parse(scrape.payload) : scrape.payload;
   const ev = payload.mappedEventData;
@@ -546,8 +457,14 @@ function PendingEventRow({ scrape, onRefresh, onViewOrg }: { scrape: any, onRefr
 
   return (
     <TableRow className={cn("bg-white", isResolved && "opacity-60")}>
-      <TableCell className="font-medium max-w-[200px] truncate select-all cursor-text" title={payload.eventTitle}>
-        {payload.eventTitle}
+      <TableCell className="max-w-[200px] group relative">
+        <div className="flex items-center gap-2 pr-6">
+          <span className="font-medium text-[11px] truncate cursor-text select-all" title={payload.eventTitle}>{payload.eventTitle || 'N/A'}</span>
+          <Button variant="outline" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2" onClick={() => setIsEditingEvent(true)} title="Edit Event Details">
+            <Edit className="w-3 h-3 text-slate-600" />
+          </Button>
+        </div>
+        {isEditingEvent && <EditableEventForm scrape={scrape} onRefresh={onRefresh} onClose={() => setIsEditingEvent(false)} />}
       </TableCell>
       <TableCell>
         {isResolved ? (
@@ -610,9 +527,10 @@ function PendingEventRow({ scrape, onRefresh, onViewOrg }: { scrape: any, onRefr
     </TableRow>
   );
 }
-function ScrapedUrlsPanel({ setUrlsCount }: { setUrlsCount: (n: number) => void }) {
+function ScrapedUrlsPanel({ setUrlsCount, urlProcessingUI }: { setUrlsCount: (n: number) => void, urlProcessingUI?: React.ReactNode }) {
   const [urls, setUrls] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
+  const [sourceTab, setSourceTab] = useState<'cron-job' | 'manual'>('cron-job');
   const [showPlatformManager, setShowPlatformManager] = useState(false);
   const [platforms, setPlatforms] = useState<any[]>([]);
 
@@ -678,7 +596,23 @@ function ScrapedUrlsPanel({ setUrlsCount }: { setUrlsCount: (n: number) => void 
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <Select value={filter} onValueChange={setFilter}>
+        <div className="flex items-center gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-lg">
+            <button
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${sourceTab === 'cron-job' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+              onClick={() => setSourceTab('cron-job')}
+            >
+              Cron-Job Scraping
+            </button>
+            <button
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${sourceTab === 'manual' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+              onClick={() => setSourceTab('manual')}
+            >
+              Manual Scraping
+            </button>
+          </div>
+          {sourceTab === 'cron-job' && (
+          <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter timeframe" />
           </SelectTrigger>
@@ -689,18 +623,26 @@ function ScrapedUrlsPanel({ setUrlsCount }: { setUrlsCount: (n: number) => void 
             <SelectItem value="month">Last Month</SelectItem>
           </SelectContent>
         </Select>
+          )}
+        </div>
 
+        {sourceTab === 'cron-job' && (
         <Button variant="outline" onClick={() => setShowPlatformManager(true)} className="flex items-center gap-2">
           <Settings className="w-4 h-4" /> Manage Platforms
         </Button>
+        )}
       </div>
 
+      {sourceTab === 'manual' && urlProcessingUI}
+
+      {sourceTab === 'cron-job' && (
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Discovered At</TableHead>
             <TableHead>Platform</TableHead>
             <TableHead>URL</TableHead>
+            <TableHead>Source</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
         </TableHeader>
@@ -717,6 +659,7 @@ function ScrapedUrlsPanel({ setUrlsCount }: { setUrlsCount: (n: number) => void 
                 <TableCell className="text-sm">
                   {new Date(u.discovered_at).toLocaleString()}
                 </TableCell>
+                <TableCell><Badge variant="secondary" className="capitalize">{u.source || 'cron-job'}</Badge></TableCell>
                 <TableCell>
                   <Badge variant="outline" className="bg-slate-50">{u.platform_name || 'Unknown'}</Badge>
                 </TableCell>
@@ -735,6 +678,7 @@ function ScrapedUrlsPanel({ setUrlsCount }: { setUrlsCount: (n: number) => void 
           )}
         </TableBody>
       </Table>
+      )}
 
       <Dialog open={showPlatformManager} onOpenChange={setShowPlatformManager}>
         <DialogContent className="!w-[85vw] !max-w-[85vw] !h-[90vh] !max-h-[90vh] flex flex-col p-6">
@@ -793,6 +737,8 @@ function ScrapedUrlsPanel({ setUrlsCount }: { setUrlsCount: (n: number) => void 
 
 
 export default function App() {
+  const [globalCityFilter, setGlobalCityFilter] = useState('All');
+  const [cities, setCities] = useState<string[]>([]);
   const [url, setUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState<{ type: string; message: string }[]>([]);
@@ -812,17 +758,26 @@ export default function App() {
     return true;
   });
 
+  const fetchCities = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/cities`);
+      const data = await res.json();
+      setCities(['All', ...data.filter(Boolean)]);
+    } catch (e) { console.error(e); }
+  };
+
   const fetchDashboardData = async () => {
     try {
-      const res = await fetch(`${API_BASE}/dashboard`);
+      const q = globalCityFilter !== 'All' ? `?city=${encodeURIComponent(globalCityFilter)}` : '';
+      const res = await fetch(`${API_BASE}/dashboard${q}`);
       const data = await res.json();
       setOrgs(data);
-      
-      const resPending = await fetch(`${API_BASE}/pending-scrapes`);
+      const resPending = await fetch(`${API_BASE}/pending-scrapes${q}`);
       const dataPending = await resPending.json();
       setPendingScrapes(dataPending);
 
-      const scrapedRes = await fetch(`${API_BASE}/scraped-urls?filter=all`);
+      const q2 = globalCityFilter !== 'All' ? `&city=${encodeURIComponent(globalCityFilter)}` : '';
+      const scrapedRes = await fetch(`${API_BASE}/scraped-urls?filter=all${q2}`);
       const scrapedData = await scrapedRes.json();
       setUrlsCount(scrapedData.length);
 
@@ -844,8 +799,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchDashboardData();
+    fetchCities();
   }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [globalCityFilter]);
 
   useEffect(() => {
     if (logEndRef.current) {
@@ -969,58 +928,19 @@ export default function App() {
           </div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Hind GTM Dashboard</h1>
         </div>
+        <div className="flex items-center gap-4">
+          <Select value={globalCityFilter} onValueChange={(v: any) => setGlobalCityFilter(v)}>
+            <SelectTrigger className="w-[180px] h-9 bg-white">
+              <SelectValue placeholder="All Cities" />
+            </SelectTrigger>
+            <SelectContent>
+              {cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </header>
 
       <main className="flex-1 p-6 w-full max-w-[1600px] mx-auto space-y-8">
-        {/* URL Processing Section */}
-        <section className="bg-white rounded-2xl shadow-sm border p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Process New Event</h2>
-          <div className="flex gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Paste BookMyShow, AllEvents, or District.in URL..."
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={isProcessing}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border-slate-200 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50"
-              />
-            </div>
-            <button 
-              onClick={handleProcess}
-              disabled={isProcessing || !url}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              {isProcessing ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Play className="w-5 h-5" />
-              )}
-              {isProcessing ? 'Processing...' : 'Start Pipeline'}
-            </button>
-          </div>
-
-          {/* Logs View */}
-          {logs.length > 0 && (
-            <div className="bg-slate-900 rounded-xl p-4 overflow-hidden shadow-inner font-mono text-sm h-64 overflow-y-auto">
-              <div className="space-y-1.5">
-                {logs.map((log, i) => (
-                  <div key={i} className={cn(
-                    "whitespace-pre-wrap break-words leading-relaxed",
-                    log.type === 'error' ? "text-red-400" : 
-                    log.type === 'done' ? "text-green-400 font-bold" : 
-                    "text-slate-300"
-                  )}>
-                    {log.message}
-                  </div>
-                ))}
-                <div ref={logEndRef} />
-              </div>
-            </div>
-          )}
-        </section>
-
         {/* Dashboard Section */}
         <section className="bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col">
           <div className="border-b bg-slate-50/50 p-4 flex justify-between items-center">
@@ -1072,7 +992,61 @@ export default function App() {
             {activeTab === 'pending' ? (
               <ScrapedEventsPanel pendingScrapes={pendingScrapes} onRefresh={fetchDashboardData} />
             ) : activeTab === 'urls' ? (
-              <ScrapedUrlsPanel setUrlsCount={setUrlsCount} />
+              <ScrapedUrlsPanel 
+                setUrlsCount={setUrlsCount} 
+                urlProcessingUI={
+                  <>
+                    {/* URL Processing Section */}
+        <section className="bg-white rounded-2xl shadow-sm border p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Scrap new event</h2>
+          <div className="flex gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Paste event url from allevents,meraevents, eventbrite etc"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                disabled={isProcessing}
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 border-slate-200 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50"
+              />
+            </div>
+            <button 
+              onClick={handleProcess}
+              disabled={isProcessing || !url}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {isProcessing ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Play className="w-5 h-5" />
+              )}
+              {isProcessing ? 'Processing...' : 'Scrap'}
+            </button>
+          </div>
+
+          {/* Logs View */}
+          {logs.length > 0 && (
+            <div className="bg-slate-900 rounded-xl p-4 overflow-hidden shadow-inner font-mono text-sm h-64 overflow-y-auto">
+              <div className="space-y-1.5">
+                {logs.map((log, i) => (
+                  <div key={i} className={cn(
+                    "whitespace-pre-wrap break-words leading-relaxed",
+                    log.type === 'error' ? "text-red-400" : 
+                    log.type === 'done' ? "text-green-400 font-bold" : 
+                    "text-slate-300"
+                  )}>
+                    {log.message}
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            </div>
+          )}
+        </section>
+                  </>
+                }
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -1513,46 +1487,17 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
 
 function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: Event[], orgId: string, onSendEvent?: (eventId: string) => void, onRefresh: () => void }) {
   const [localEvents, setLocalEvents] = useState(events);
-  const [selectedLocation, setSelectedLocation] = useState<string>("All Locations");
 
   useEffect(() => {
     setLocalEvents(events);
   }, [events]);
-
-  const availableLocations = useMemo(() => {
-    const rawLocations = localEvents.map(e => {
-      if (!e.location) return null;
-      if (e.location === "Online") return "Online";
-      const parts = e.location.split(',');
-      return parts[parts.length - 1].trim();
-    }).filter(Boolean) as string[];
-    const unique = Array.from(new Set(rawLocations)).sort();
-    return ["All Locations", ...unique];
-  }, [localEvents]);
-
-  const filteredEvents = (!selectedLocation || selectedLocation === "All Locations") ? localEvents : localEvents.filter(e => {
-    if (!e.location) return false;
-    if (selectedLocation === "Online") return e.location === "Online";
-    const parts = e.location.split(',');
-    const cleanCity = parts[parts.length - 1].trim();
-    return cleanCity === selectedLocation;
-  });
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-sm font-medium leading-none">Events <Badge variant="secondary" className="ml-2">{events.length}</Badge></h3>
         
-        <Select value={selectedLocation} onValueChange={(v) => setSelectedLocation(v || "All Locations")}>
-          <SelectTrigger className="w-[180px] h-9 text-sm bg-white">
-            <SelectValue placeholder="Select Location" />
-          </SelectTrigger>
-          <SelectContent>
-            {availableLocations.map(loc => (
-              <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
       </div>
       <div className="rounded-md border bg-card">
         <Table>
@@ -1572,10 +1517,10 @@ function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: Event[
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredEvents.length === 0 ? (
+            {localEvents.length === 0 ? (
                <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground h-24">No events found.</TableCell></TableRow>
             ) : (
-              filteredEvents.map(e => (
+              localEvents.map(e => (
                 <EditableEventRow 
                    key={e.id} 
                    event={e} 

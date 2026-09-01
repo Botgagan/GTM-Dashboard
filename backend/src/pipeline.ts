@@ -99,10 +99,29 @@ export async function processUrl(targetUrl: string, onLog: (msg: string) => void
         log(`\n--- AUTOMATED EMAIL EXTRACTION (GOOGLE + AI) ---`);
         log(`\n🔍 Hunting for email of Organizer: "${primaryOrganizer}"...`);
         let contactInfo = { emails: [] as string[], phones: [] as string[] };
+        let googleBusinessLink = "";
         if (primaryOrganizer !== "Unknown Organizer") {
             contactInfo = await findEmailViaGoogleSearch(primaryOrganizer, locationStr);
             if (contactInfo.emails.length > 0) log(`Found Emails: ${contactInfo.emails.join(", ")}`);
             if (contactInfo.phones.length > 0) log(`Found Phones: ${contactInfo.phones.join(", ")}`);
+
+            try {
+                const axios = require("axios");
+                const placesConfig = {
+                    method: "post",
+                    url: "https://google.serper.dev/places",
+                    headers: { "X-API-KEY": process.env.SERPER_API_KEY, "Content-Type": "application/json" },
+                    data: JSON.stringify({ "q": primaryOrganizer, "gl": "in" })
+                };
+                const placesRes = await axios.request(placesConfig);
+                if (placesRes.data && placesRes.data.places && placesRes.data.places.length > 0) {
+                    const place = placesRes.data.places[0];
+                    googleBusinessLink = place.link || (place.cid ? `https://maps.google.com/?cid=${place.cid}` : "");
+                    log(`Found Google Maps Link: ${googleBusinessLink}`);
+                }
+            } catch (err: any) {
+                log("Failed to fetch Google Maps Link from Serper: " + err.message);
+            }
         } else {
             log(`Skipping email hunt because organizer is Unknown (likely not an event page).`);
         }
@@ -116,7 +135,9 @@ export async function processUrl(targetUrl: string, onLog: (msg: string) => void
 
         // Determine if event is online
         const isOnline = mappedEventData.eventType === 'live' || mappedEventData.eventType === 'online' || locationStr.toLowerCase().includes('online');
-        const finalLocation = isOnline ? "Online" : (mappedEventData.otherLocationDetails ? `${locationStr}\n${mappedEventData.otherLocationDetails}` : locationStr);
+        const finalLocation = mappedEventData.city && mappedEventData.city !== "Unknown" 
+            ? mappedEventData.city 
+            : (isOnline ? "Online" : (mappedEventData.otherLocationDetails ? `${locationStr}\n${mappedEventData.otherLocationDetails}` : locationStr));
 
         // Save to Pending Scrapes Queue
         const payload = {
@@ -128,7 +149,8 @@ export async function processUrl(targetUrl: string, onLog: (msg: string) => void
             contactInfo,
             fullStartTimestamp,
             finalLocation,
-            eventTitle
+            eventTitle,
+            googleBusinessLink
         };
 
         const { insertPendingScrape } = await import('./db');
