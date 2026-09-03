@@ -1,17 +1,38 @@
 const fs = require('fs');
-let content = fs.readFileSync('backend/src/googleBusinessFetcher.ts', 'utf-8');
+let content = fs.readFileSync('backend/src/pipeline.ts', 'utf-8');
 
-// Fix TS error 1: mapsData.website to string
-content = content.replace(
-    'const txt = await scrapeWebsiteText(mapsData.website);',
-    'const txt = await scrapeWebsiteText(String(mapsData.website));'
-);
+// Fix 1: Remove the invalid import destructurings from db
+const badImport = `const { pool, getAdminInviteLink, getSubcommunityDetails, submitEventToCohortApi, getEventDetails } = await import('./db');`;
+const goodImport = `const { pool } = await import('./db');`;
+content = content.replace(badImport, goodImport);
 
-// Fix TS error 2: placesErr is of type unknown
-content = content.replace(
-    '} catch (placesErr) {',
-    '} catch (placesErr: any) {'
-);
+// Fix 2: Fix insertEvent parameters
+const badInsert = `            await insertEvent({
+                orgId: localOrgId,
+                title: eventTitle,
+                description: mappedEventData.description,
+                startDate: fullStartTimestamp,
+                location: finalLocation,
+                url: targetUrl,
+                cohortEventId: newEventId,
+                cohortEventUrl: eventUrl,
+                hindStatus: approvalStatus
+            });`;
+            
+const goodInsert = `            await insertEvent({
+                orgId: localOrgId,
+                title: eventTitle,
+                eventDate: fullStartTimestamp,
+                endDate: mappedEventData.endDate && mappedEventData.endDate !== "2026-08-15" ? mappedEventData.endDate : undefined,
+                location: finalLocation,
+                hindUrl: eventUrl,
+                sourceUrl: targetUrl,
+                cohortEventId: newEventId,
+                status: 'new',
+                hindStatus: approvalStatus
+            });`;
+content = content.replace(badInsert, goodInsert);
+content = content.replace(badInsert.replace(/\n/g, '\r\n'), goodInsert.replace(/\n/g, '\r\n'));
 
-fs.writeFileSync('backend/src/googleBusinessFetcher.ts', content, 'utf-8');
-console.log("TS errors fixed in googleBusinessFetcher.");
+fs.writeFileSync('backend/src/pipeline.ts', content, 'utf-8');
+console.log("Fixed pipeline.ts typescript errors");

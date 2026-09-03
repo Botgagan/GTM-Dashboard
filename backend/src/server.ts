@@ -294,6 +294,54 @@ app.get('/api/pending-scrapes', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+
+app.post('/api/org/:id/retry-manual', async (req, res) => {
+    try {
+        const { manualUrl } = req.body;
+        if (!manualUrl) return res.status(400).json({ error: "Missing manualUrl" });
+
+        // 1. Extract Cohort orgId from URL
+        let cohortOrgId = "";
+        try {
+            const urlObj = new URL(manualUrl);
+            cohortOrgId = urlObj.searchParams.get("orgId") || "";
+        } catch(e) {
+            return res.status(400).json({ error: "Invalid URL format" });
+        }
+        if (!cohortOrgId) return res.status(400).json({ error: "Could not find orgId in the URL" });
+
+        // 2. Verify with Cohort API
+        const axios = require('axios');
+        try {
+            const headers: Record<string, string> = { 'accept': 'application/json' };
+            if (process.env.COHORT_ACCESS_TOKEN) {
+                headers['Authorization'] = `Bearer ${process.env.COHORT_ACCESS_TOKEN}`;
+            }
+            const verifyRes = await axios.get(`https://devapi.cohort.social/organization/admin/details/${cohortOrgId}`, { headers });
+            
+            console.log("Validation API Response:", JSON.stringify(verifyRes.data, null, 2));
+
+            const responseData = verifyRes.data?.data || verifyRes.data;
+            const orgDetails = responseData?.details || responseData;
+
+            if (!orgDetails || !orgDetails.id) {
+                return res.status(400).json({ error: "Organization not found on Cohort API. Expected 'id', but got: " + JSON.stringify(responseData).substring(0, 100) });
+            }
+        } catch(e: any) {
+            console.error("Verification failed:", e.response?.data || e.message);
+            return res.status(400).json({ error: "Failed to verify organization with Cohort API" });
+        }
+
+        // 3. Call the pipeline function using the local organizations table ID
+        const { retryManualOrg } = require('./pipeline');
+        await retryManualOrg(req.params.id, cohortOrgId);
+        
+        res.json({ success: true, cohortOrgId });
+    } catch (e: any) { 
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
 app.post('/api/pending-scrapes/:id/approve', async (req, res) => {
     try {
         const { approvePendingScrape } = await import('./pipeline');

@@ -281,3 +281,126 @@ export async function approvePendingScrape(pendingId: string) {
     await updatePendingScrapeStatus(pendingId, 'approved');
     console.log(`✅ Approved and pushed to Cohort successfully!`);
 }
+
+export async function retryManualOrg(localOrgId: string, manualOrgId: string) {
+    const { pool, updateOrganization } = await import('./db');
+    
+    // 1. Fetch the exact failed event for this org to guarantee we get the correct sourceUrl
+    const failedEventRes = await pool.query("SELECT * FROM events WHERE org_id = $1 AND status = 'failed' LIMIT 1", [localOrgId]);
+    if (failedEventRes.rows.length === 0) {
+        throw new Error("Could not find the failed event record for this organization");
+    }
+    const failedEvent = failedEventRes.rows[0];
+    const sourceUrl = failedEvent.source_url;
+
+    // 2. Fetch the correct original payload using the sourceUrl
+    const pendingRes = await pool.query("SELECT payload FROM pending_scrapes WHERE source_url = $1 LIMIT 1", [sourceUrl]);
+    
+    let p = null;
+    let mappedEventData = null;
+    if (pendingRes.rows.length > 0) {
+        p = pendingRes.rows[0].payload;
+        mappedEventData = p.mappedEventData || p;
+    }
+    
+    // 3. Get fresh details from Cohort GET API to overwrite our local data
+    const apiClient = await import('./apiClient');
+    let apiData = null;
+    try {
+        apiData = await apiClient.getSubcommunityDetails(manualOrgId);
+    } catch (e) {
+        console.error("Warning: Failed to fetch fresh details from Cohort API", e);
+    }
+
+    // Use existing DB name as fallback if payload is missing
+    const orgRes = await pool.query('SELECT name, city FROM organizations WHERE id = $1', [localOrgId]);
+    
+    let updatedName = p ? p.primaryOrganizer : orgRes.rows[0].name;
+    let updatedWebsite = null;
+    let updatedCity = p ? p.locationStr : orgRes.rows[0].city;
+    let updatedAddress = p ? p.locationStr : orgRes.rows[0].city;
+    let updatedHindStatus = 'unpublished';
+    let updatedMembersCount = 0;
+    let updatedCommunityName = null;
+    
+    const orgDetails = apiData?.orgDetails || apiData?.details;
+    if (orgDetails) {
+        if (orgDetails.name) updatedName = orgDetails.name;
+        if (orgDetails.website) updatedWebsite = orgDetails.website;
+        if (orgDetails.location) updatedCity = orgDetails.location;
+        if (orgDetails.address || orgDetails.location) updatedAddress = orgDetails.address || orgDetails.location;
+        if (orgDetails.isPublished) updatedHindStatus = 'published';
+        if (apiData.members) updatedMembersCount = parseInt(apiData.members) || 0;
+        if (orgDetails.parentCommunity && orgDetails.parentCommunity.name) {
+            updatedCommunityName = orgDetails.parentCommunity.name;
+        }
+        
+        // Handle Contacts (email/phone) mapping
+        const email = orgDetails.email;
+        const phone = orgDetails.phoneNo;
+        
+        if (email && email.indexOf('@placeholder.com') === -1) {
+            await pool.query("INSERT INTO contacts (org_id, email, source) VALUES ($1, $2, 'Cohort API') ON CONFLICT DO NOTHING", [localOrgId, email]);
+        }
+        if (phone) {
+            await pool.query("INSERT INTO contacts (org_id, phone, source) VALUES ($1, $2, 'Cohort API') ON CONFLICT DO NOTHING", [localOrgId, phone]);
+        }
+    }
+
+    // 4. Update the organization in our local DB with ALL fresh API data!
+    await updateOrganization(localOrgId, {
+        subcommunityId: manualOrgId,
+        name: updatedName,
+        orgName: updatedName,
+        website: updatedWebsite,
+        city: updatedCity,
+        address: updatedAddress,
+        hindStatus: updatedHindStatus,
+        communityName: updatedCommunityName || undefined,
+        createdFor: 'event',
+        owner: 'hind admin',
+        failureReason: null,
+        status: 'unclaimed'
+    });
+    if (updatedMembersCount > 0) {
+        await pool.query('UPDATE organizations SET members_count = $1 WHERE id = $2', [updatedMembersCount, localOrgId]);
+    }
+
+    // 5. Submit Event to Cohort API (ONLY IF PAYLOAD EXISTS)
+    if (mappedEventData) {
+        let newEventId = "";
+        let eventUrl = "";
+        let approvalStatus = "pending";
+
+        const apiResponse: any = await apiClient.submitEventToCohortApi(mappedEventData, manualOrgId);
+        const eventDetails = apiResponse?.data?.eventDetails || apiResponse?.eventDetails || apiResponse;
+        newEventId = eventDetails?.id || eventDetails?.occurenceId || "";
+        eventUrl = `https://turbo.cohort.social/community/69c6a422-3638-46b9-b27e-99c844adcfd8/organisation/${manualOrgId}/events/${newEventId}`;
+
+        if (newEventId) {
+            const freshEventDetails = await apiClient.getEventDetails(manualOrgId, newEventId);
+            if (freshEventDetails && freshEventDetails.approvalStatus) {
+                approvalStatus = freshEventDetails.approvalStatus === 'approved' ? 'published' : 'unpublished';
+            }
+        }
+
+        // 6. UPDATE the existing failed event instead of inserting a duplicate!
+        await pool.query(
+            "UPDATE events SET status = $1, cohort_event_id = $2, hind_url = $3, hind_status = $4 WHERE id = $5",
+            ['new', newEventId, eventUrl, approvalStatus, failedEvent.id]
+        );
+    } else {
+        console.log("Skipping event push because original payload was deleted from pending_scrapes.");
+    }
+
+    // 7. Generate Admin Invite Link
+    try {
+        const adminInviteLink = await apiClient.getAdminInviteLink(manualOrgId);
+        if (adminInviteLink && adminInviteLink !== "Not Generated") {
+            await updateOrganization(localOrgId, { adminInviteLink });
+        }
+    } catch(e) { console.error("Failed to fetch admin link on manual retry"); }
+
+    console.log(`??? Manual Organization Link Successful!`);
+}
+

@@ -137,7 +137,7 @@ function getDomainName(urlStr: string | null): string {
   }
 }
 
-function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly, sendingToInstantly, onRefresh }: any) {
+function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly, sendingToInstantly, onRefresh, linkingManualOrg, handleLinkManualOrg }: any) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(org);
   const [isSaving, setIsSaving] = useState(false);
@@ -313,6 +313,22 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-2">
             <div className="flex flex-col items-end gap-2">
+              {org.status === 'failed' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px] px-2 bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200"
+                  onClick={(e) => { e.stopPropagation(); handleLinkManualOrg(org.id); }}
+                  disabled={linkingManualOrg === org.id}
+                >
+                  {linkingManualOrg === org.id ? (
+                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5" />
+                  ) : (
+                    <LinkIcon className="w-3 h-3 mr-1.5" />
+                  )}
+                  Link Manual Org
+                </Button>
+              )}
               {org.status !== 'failed' && !org.id.startsWith('new-') && (
                 <Button
                   size="sm"
@@ -750,6 +766,40 @@ export default function App() {
   const [orgDetails, setOrgDetails] = useState<{ contacts: Contact[]; events: Event[] }>({ contacts: [], events: [] });
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [sendingToInstantly, setSendingToInstantly] = useState<string | null>(null);
+  const [linkingManualOrg, setLinkingManualOrg] = useState<string | null>(null);
+  const [manualOrgModal, setManualOrgModal] = useState<{isOpen: boolean, orgId: string | null, url: string}>({isOpen: false, orgId: null, url: ""});
+
+  const handleLinkManualOrg = (orgId: string) => {
+    setManualOrgModal({ isOpen: true, orgId, url: "" });
+  };
+
+  const submitManualOrg = async () => {
+    const { orgId, url: manualUrl } = manualOrgModal;
+    if (!orgId || !manualUrl) return;
+
+    setManualOrgModal({ isOpen: false, orgId: null, url: "" });
+    setLinkingManualOrg(orgId);
+    
+    try {
+      const res = await fetch(`${API_BASE}/org/${orgId}/retry-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manualUrl })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert("Success! The manual organization was linked, the event was pushed, and the record has been moved to Unclaimed Communities.");
+        fetchDashboardData();
+      } else {
+        alert(`Failed: ${data.error}`);
+      }
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setLinkingManualOrg(null);
+    }
+  };
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -1092,6 +1142,8 @@ export default function App() {
                       loadingDetails={loadingDetails}
                       orgDetails={orgDetails}
                       handleToggleContact={handleToggleContact}
+                      linkingManualOrg={linkingManualOrg}
+                      handleLinkManualOrg={handleLinkManualOrg}
                     />
                   ))
                 )}
@@ -1127,6 +1179,31 @@ export default function App() {
                 <EventsPanel events={orgDetails.events} orgId={expandedOrg.id} onRefresh={fetchDashboardData} />
               </div>
             ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={manualOrgModal.isOpen} onOpenChange={(isOpen) => setManualOrgModal(prev => ({ ...prev, isOpen }))}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Link Manual Organization</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              Please paste the URL of the organization you manually created on Hind Social:
+              <br/>
+              <span className="text-xs font-mono text-slate-500">(e.g., https://turbo.cohort.social/admin/organisation-profile?comId=...&orgId=...)</span>
+            </p>
+            <Input 
+              value={manualOrgModal.url}
+              onChange={(e) => setManualOrgModal(prev => ({ ...prev, url: e.target.value }))}
+              placeholder="https://turbo.cohort.social/..."
+              className="w-full"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setManualOrgModal(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
+            <Button onClick={submitManualOrg} disabled={!manualOrgModal.url}>Save</Button>
           </div>
         </DialogContent>
       </Dialog>
