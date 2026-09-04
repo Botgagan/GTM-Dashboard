@@ -153,8 +153,56 @@ export async function processUrl(targetUrl: string, onLog: (msg: string) => void
             googleBusinessLink
         };
 
-        const { insertPendingScrape } = await import('./db');
-        await insertPendingScrape(targetUrl, payload);
+        const db = await import('./db');
+        let linkedOrgId = null;
+
+        if (primaryOrganizer && primaryOrganizer !== "Unknown Organizer") {
+            // STEP 1: Deterministic Alias Check
+            linkedOrgId = await db.findLinkedOrgIdByAlias(primaryOrganizer);
+            
+            if (linkedOrgId) {
+                log(`[Auto-Link] Found exact deterministic alias match for "${primaryOrganizer}"!`);
+            } else {
+                // STEP 2: Semantic LLM Resolution
+                log(`[Auto-Link] No exact alias found. Asking LLM for semantic match...`);
+                const existingOrgs = await db.getAllOrganizationsForLLM();
+                if (existingOrgs.length > 0) {
+                    const prompt = `
+                    We scraped an event hosted by: "${primaryOrganizer}".
+                    Here is a JSON list of existing organizations in our database:
+                    ${JSON.stringify(existingOrgs)}
+                    
+                    Does "${primaryOrganizer}" strongly semantically match any of the existing organizations?
+                    Respond with ONLY the exact UUID of the matched organization if you are highly confident (>95% sure it's the exact same entity).
+                    If there is no match or you are unsure, respond with EXACTLY "none".
+                    Do not explain. Just the UUID or "none".`;
+                    
+                    const { generateText } = await import('ai');
+                    const { createOpenAI } = await import('@ai-sdk/openai');
+                    const openrouter = createOpenAI({
+                        baseURL: 'https://openrouter.ai/api/v1',
+                        apiKey: process.env.OPENROUTER_API_KEY
+                    });
+                    try {
+                        const { text } = await generateText({
+                            model: openrouter('openai/gpt-4o-mini'),
+                            prompt: prompt
+                        });
+                        const cleanText = text.trim();
+                        if (cleanText.length > 10 && cleanText !== "none") {
+                            linkedOrgId = cleanText;
+                            log(`[Auto-Link] LLM confidently matched "${primaryOrganizer}" to Org ID: ${linkedOrgId}`);
+                        } else {
+                            log(`[Auto-Link] LLM determined no confident match.`);
+                        }
+                    } catch(e) {
+                        log(`[Auto-Link] LLM semantic check failed: ` + e);
+                    }
+                }
+            }
+        }
+
+        await db.insertPendingScrape(targetUrl, payload, linkedOrgId);
 
         log(`\n✅ Finished mapping: ${eventTitle} (Stored in Scraped Events Queue)`);
         await completePipelineRun(runId, null, 'success', fullLog);
@@ -195,11 +243,34 @@ export async function approvePendingScrape(pendingId: string) {
 
     console.log(`Approving scrape for: ${eventTitle}`);
 
-    // --- 3. CREATE SUBCOMMUNITY FIRST ---
+    // --- 3. SUBCOMMUNITY HANDLING (LINKED VS NEW) ---
     let adminInviteLink = "Not Generated";
     let orgApprovalStatus = "pending";
     let parentCommunityName = undefined;
-    const subcommunityId = await createSubcommunity(primaryOrganizer, contactInfo.emails[0] || "", contactInfo.phones[0] || "");
+    let subcommunityId = null;
+    let orgId = null;
+
+    if (row.linked_org_id) {
+        console.log(`??? This event is pre-linked to Organization ID: ${row.linked_org_id}`);
+        orgId = row.linked_org_id;
+        
+        // Fetch existing org to get subcommunity_id
+        const { pool, insertOrganizationAlias } = await import('./db');
+        const orgRes = await pool.query('SELECT subcommunity_id FROM organizations WHERE id = $1', [orgId]);
+        if (orgRes.rows.length > 0 && orgRes.rows[0].subcommunity_id) {
+            subcommunityId = orgRes.rows[0].subcommunity_id;
+        }
+
+        // Train the Alias dictionary! We know this mapping works now.
+        if (primaryOrganizer && primaryOrganizer !== "Unknown Organizer") {
+            await insertOrganizationAlias(orgId, primaryOrganizer, 'unknown');
+        }
+
+    } else {
+        // Standard Flow: CREATE BRAND NEW SUBCOMMUNITY
+        console.log(`??? No link found. Creating brand new subcommunity for ${primaryOrganizer}`);
+        subcommunityId = await createSubcommunity(primaryOrganizer, contactInfo.emails[0] || "", contactInfo.phones[0] || "");
+    }
     
     if (subcommunityId) {
         const fetchedLink = await getAdminInviteLink(subcommunityId);
@@ -215,10 +286,11 @@ export async function approvePendingScrape(pendingId: string) {
         }
     }
 
-    // DB: Save organization
-    const orgId = await upsertOrganization({
-        name: primaryOrganizer,
-        status: subcommunityId ? 'unclaimed' : 'failed',
+    // DB: Save organization (ONLY IF NEW)
+    if (!row.linked_org_id) {
+        orgId = await upsertOrganization({
+            name: primaryOrganizer,
+            status: subcommunityId ? 'unclaimed' : 'failed',
         city: contactInfo.city || p.locationStr,
         address: contactInfo.address,
         website: contactInfo.website,
@@ -229,7 +301,17 @@ export async function approvePendingScrape(pendingId: string) {
         subcommunityId: subcommunityId || undefined,
         adminInviteLink: adminInviteLink !== "Not Generated" ? adminInviteLink : undefined,
         failureReason: subcommunityId ? undefined : 'API Error',
-        hindStatus: orgApprovalStatus
+        hindStatus: orgApprovalStatus,
+        richData: {
+            logo: p.logo,
+            images: p.images,
+            accessibility: p.accessibility,
+            offerings: p.offerings,
+            amenities: p.amenities,
+            payments: p.payments,
+            description: p.mappedEventData?.description,
+            googleBusinessLink: p.googleBusinessLink
+        }
     });
 
     // DB: Save contacts
@@ -242,6 +324,13 @@ export async function approvePendingScrape(pendingId: string) {
     if (contactInfo.emails.length === 0 && contactInfo.phones.length === 0) {
         await insertContact({ orgId, source: 'System' }); 
     }
+    
+    // Train the AI on the new org creation
+    if (primaryOrganizer && primaryOrganizer !== "Unknown Organizer") {
+        const { insertOrganizationAlias } = await import('./db');
+        await insertOrganizationAlias(orgId, primaryOrganizer, 'unknown');
+    }
+    }
 
     // --- 4. PUSH EVENT TO COHORT ---
     let newEventId = "";
@@ -252,7 +341,7 @@ export async function approvePendingScrape(pendingId: string) {
         const apiResponse: any = await submitEventToCohortApi(mappedEventData, subcommunityId);
         const eventDetails = apiResponse?.data?.eventDetails || apiResponse?.eventDetails || apiResponse;
         newEventId = eventDetails?.id || eventDetails?.occurenceId || "";
-        eventUrl = `https://turbo.cohort.social/community/69c6a422-3638-46b9-b27e-99c844adcfd8/organisation/${subcommunityId}/events/${newEventId}`;
+        eventUrl = `${process.env.COHORT_FRONTEND_URL || "https://turbo.cohort.social"}/community/69c6a422-3638-46b9-b27e-99c844adcfd8/organisation/${subcommunityId}/events/${newEventId}`;
 
         if (newEventId) {
             const freshEventDetails = await getEventDetails(subcommunityId, newEventId);
@@ -375,7 +464,7 @@ export async function retryManualOrg(localOrgId: string, manualOrgId: string) {
         const apiResponse: any = await apiClient.submitEventToCohortApi(mappedEventData, manualOrgId);
         const eventDetails = apiResponse?.data?.eventDetails || apiResponse?.eventDetails || apiResponse;
         newEventId = eventDetails?.id || eventDetails?.occurenceId || "";
-        eventUrl = `https://turbo.cohort.social/community/69c6a422-3638-46b9-b27e-99c844adcfd8/organisation/${manualOrgId}/events/${newEventId}`;
+        eventUrl = `${process.env.COHORT_FRONTEND_URL || "https://turbo.cohort.social"}/community/69c6a422-3638-46b9-b27e-99c844adcfd8/organisation/${manualOrgId}/events/${newEventId}`;
 
         if (newEventId) {
             const freshEventDetails = await apiClient.getEventDetails(manualOrgId, newEventId);

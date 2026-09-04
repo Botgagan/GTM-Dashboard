@@ -33,11 +33,12 @@ export async function upsertOrganization(data: {
     owner?: string;
     membersCount?: number;
     hindStatus?: string;
+    richData?: any;
 }): Promise<string> {
     const res = await pool.query(
         `INSERT INTO organizations
-            (name, status, org_name, address, city, website, subcommunity_id, admin_invite_link, failure_reason, community_name, created_for, owner, members_count, hind_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            (name, status, org_name, address, city, website, subcommunity_id, admin_invite_link, failure_reason, community_name, created_for, owner, members_count, hind_status, rich_data)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING id`,
         [
             data.name,
@@ -53,7 +54,8 @@ export async function upsertOrganization(data: {
             data.createdFor || null,
             data.owner || null,
             data.membersCount || 0,
-            data.hindStatus || 'pending'
+            data.hindStatus || 'pending',
+            data.richData ? JSON.stringify(data.richData) : null
         ]
     );
     return res.rows[0].id;
@@ -295,16 +297,19 @@ export async function getCities() {
 // Pending Scrapes
 // ─────────────────────────────────────────────
 export async function getPendingScrapes(city?: string) {
+    const query = `
+        SELECT ps.*, o.name as linked_org_name, o.website as linked_org_website, o.subcommunity_id as linked_org_subcommunity_id, o.city as linked_org_city, o.created_at as linked_org_created_at 
+        FROM pending_scrapes ps 
+        LEFT JOIN organizations o ON ps.linked_org_id = o.id 
+    `;
     if (city) {
         const res = await pool.query(
-            `SELECT * FROM pending_scrapes 
-             WHERE payload::jsonb -> 'mappedEventData' ->> 'location' ILIKE $1 
-             ORDER BY created_at DESC`,
+            query + ` WHERE ps.payload::jsonb -> 'mappedEventData' ->> 'location' ILIKE $1 ORDER BY ps.created_at DESC`,
             [`%${city}%`]
         );
         return res.rows;
     } else {
-        const res = await pool.query(`SELECT * FROM pending_scrapes ORDER BY created_at DESC`);
+        const res = await pool.query(query + ` ORDER BY ps.created_at DESC`);
         return res.rows;
     }
 }
@@ -314,10 +319,10 @@ export async function getPendingScrapeById(id: string) {
     return res.rows[0];
 }
 
-export async function insertPendingScrape(sourceUrl: string, payload: any) {
+export async function insertPendingScrape(sourceUrl: string, payload: any, linkedOrgId: string | null = null) {
     const res = await pool.query(
-        `INSERT INTO pending_scrapes (source_url, payload, status) VALUES ($1, $2, 'pending') RETURNING id`,
-        [sourceUrl, JSON.stringify(payload)]
+        `INSERT INTO pending_scrapes (source_url, payload, status, linked_org_id) VALUES ($1, $2, 'pending', $3) RETURNING id`,
+        [sourceUrl, JSON.stringify(payload), linkedOrgId]
     );
     return res.rows[0].id;
 }
@@ -326,3 +331,40 @@ export async function updatePendingScrapeStatus(id: string, status: string) {
     await pool.query(`UPDATE pending_scrapes SET status = $1 WHERE id = $2`, [status, id]);
 }
 
+
+// ==========================================
+// Organization Aliases (Deduplication)
+// ==========================================
+
+export async function insertOrganizationAlias(orgId: string, aliasName: string, platform: string = 'unknown') {
+    try {
+        await pool.query(
+            `INSERT INTO organization_aliases (org_id, alias_name, platform) 
+             VALUES ($1, $2, $3) 
+             ON CONFLICT (alias_name, platform) DO NOTHING`,
+            [orgId, aliasName, platform]
+        );
+    } catch (e) {
+        console.error('Error inserting alias:', e);
+    }
+}
+
+export async function findLinkedOrgIdByAlias(aliasName: string, platform: string = 'unknown'): Promise<string | null> {
+    const res = await pool.query(
+        `SELECT org_id FROM organization_aliases WHERE alias_name = $1 AND platform = $2 LIMIT 1`,
+        [aliasName, platform]
+    );
+    return res.rows.length > 0 ? res.rows[0].org_id : null;
+}
+
+export async function updatePendingScrapeLink(pendingId: string, linkedOrgId: string | null) {
+    await pool.query(
+        `UPDATE pending_scrapes SET linked_org_id = $1 WHERE id = $2`,
+        [linkedOrgId, pendingId]
+    );
+}
+
+export async function getAllOrganizationsForLLM() {
+    const res = await pool.query(`SELECT id, name FROM organizations WHERE subcommunity_id IS NOT NULL`);
+    return res.rows;
+}

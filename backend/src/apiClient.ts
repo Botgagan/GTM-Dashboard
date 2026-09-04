@@ -1,4 +1,5 @@
 import axios from 'axios';
+const API_BASE_URL = process.env.COHORT_API_URL || 'https://devapi.cohort.social';
 import FormData from 'form-data';
 import { HindEventPayload } from './types';
 import * as dotenv from 'dotenv';
@@ -6,9 +7,9 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 export async function submitEventToCohortApi(payload: HindEventPayload, orgId: string | null = null) {
-    let apiUrl = 'https://devapi.cohort.social/eventv2/philosophy/684ee90a-6498-4c58-a425-bdbe93886eb7';
+    let apiUrl = `${API_BASE_URL}/eventv2/philosophy/684ee90a-6498-4c58-a425-bdbe93886eb7`;
     if (orgId) {
-        apiUrl = `https://devapi.cohort.social/eventv2/organization/${orgId}`;
+        apiUrl = `${API_BASE_URL}/eventv2/organization/${orgId}`;
     }
     
     console.log(`\n--- PUSHING EVENT TO COHORT API ---`);
@@ -232,7 +233,7 @@ export async function submitEventToCohortApi(payload: HindEventPayload, orgId: s
 }
 
 export async function createSubcommunity(organizerName: string, phoneStr: string, emailStr: string): Promise<string | null> {
-    const apiUrl = 'https://devapi.cohort.social/organization';
+    const apiUrl = `${API_BASE_URL}/organization`;
     console.log(`\n--- CREATING SUBCOMMUNITY FOR: ${organizerName} ---`);
     
     let primaryEmail = emailStr;
@@ -293,7 +294,7 @@ export async function createSubcommunity(organizerName: string, phoneStr: string
 }
 
 export async function getAdminInviteLink(orgId: string): Promise<string | null> {
-    const apiUrl = `https://devapi.cohort.social/invite/organization/${orgId}?pageSize=10&type=custom`;
+    const apiUrl = `${API_BASE_URL}/invite/organization/${orgId}?pageSize=10&type=custom`;
     console.log(`\n--- FETCHING ADMIN INVITE LINK ---`);
     
     const headers: any = {
@@ -322,7 +323,7 @@ export async function getAdminInviteLink(orgId: string): Promise<string | null> 
 }
 
 export async function getEventDetails(orgId: string, eventId: string): Promise<any | null> {
-    const apiUrl = `https://devapi.cohort.social/eventv2/organization/${orgId}/${eventId}/details?recording=false`;
+    const apiUrl = `${API_BASE_URL}/eventv2/organization/${orgId}/${eventId}/details?recording=false`;
     console.log(`\n--- FETCHING EVENT DETAILS FOR STATUS ---`);
     console.log(`GET ${apiUrl}`);
     
@@ -344,7 +345,7 @@ export async function getEventDetails(orgId: string, eventId: string): Promise<a
 }
 
 export async function getSubcommunityDetails(orgId: string): Promise<any | null> {
-    const apiUrl = `https://devapi.cohort.social/organization/profile/${orgId}`;
+    const apiUrl = `${API_BASE_URL}/organization/profile/${orgId}`;
     console.log(`\n--- FETCHING SUBCOMMUNITY DETAILS ---`);
     console.log(`GET ${apiUrl}`);
     

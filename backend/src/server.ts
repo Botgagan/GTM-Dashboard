@@ -317,7 +317,7 @@ app.post('/api/org/:id/retry-manual', async (req, res) => {
             if (process.env.COHORT_ACCESS_TOKEN) {
                 headers['Authorization'] = `Bearer ${process.env.COHORT_ACCESS_TOKEN}`;
             }
-            const verifyRes = await axios.get(`https://devapi.cohort.social/organization/admin/details/${cohortOrgId}`, { headers });
+            const verifyRes = await axios.get(`${process.env.COHORT_API_URL || "https://devapi.cohort.social"}/organization/admin/details/${cohortOrgId}`, { headers });
             
             console.log("Validation API Response:", JSON.stringify(verifyRes.data, null, 2));
 
@@ -350,6 +350,17 @@ app.post('/api/pending-scrapes/:id/approve', async (req, res) => {
     } catch (e: any) {
         console.error(e);
         res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/pending-scrapes/:id/link-org', async (req, res) => {
+    try {
+        const { orgId } = req.body;
+        const { updatePendingScrapeLink } = await import('./db');
+        await updatePendingScrapeLink(req.params.id, orgId || null);
+        res.json({ success: true });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
     }
 });
 

@@ -1,45 +1,92 @@
-# Automated Scraping Architecture & Design Document
+# Scraping Architecture: Organization Deduplication & Auto-Linking
 
-This document outlines the end-to-end architecture of the automated daily event scraping engine, the tools utilized, and the specific design decisions regarding concurrency, batching, and webhook avoidance.
+## The Challenge
+Events are scraped daily from multiple platforms (Eventbrite, SortMyScene, MeraEvents, etc.). A single real-world organization (e.g., "Wafflelogy") might exist under slightly different names on different platforms (e.g., "Wafflelogy Cafe", "Wafflelogy India").
+We need a robust system that:
+1. Prevents duplicate subcommunities from being created on the Cohort platform.
+2. Learns from manual user actions to auto-link future events.
+3. Keeps a "Human-in-the-Loop" safeguard so automation mistakes can be caught and corrected before pushing to Cohort.
 
-## 1. High-Level Flow (The Daily 10:00 AM Cron Job)
+## Core Philosophy: "Human-in-the-loop Auto-Linking"
+Instead of blindly pushing events to existing organizations, automation will **suggest** links. These pre-linked events will still sit in the Scraped Events tab, giving the admin full control to approve, re-link, or break the link before anything is pushed to the live Cohort platform.
 
-The entire automated system is orchestrated by a `node-cron` job running inside the Node.js Express backend. At 10:00 AM every day, the `discoveryEngine.ts` script wakes up and performs the following sequence:
+---
 
-1. **Platform Query:** Queries the `scraping_platforms` PostgreSQL table to find all active platforms (e.g., Eventbrite, Townscript, AllEvents).
-2. **URL Discovery (Serper API):** Instead of using a crawler to navigate homepages, the engine queries the **Google Serper API** (Google Search). 
-   - *Query format:* `site:townscript.com/e/ "2026"` with time filters (`qdr:d` for past 24 hours) and geolocation (`gl:in` for India).
-   - *Why?* Google has already bypassed bot protection and indexed the internet. This allows us to instantly discover fresh event URLs without writing custom, fragile page-navigation crawlers for 7 different websites.
-3. **Queueing (Database):** The engine grabs exactly 2 URLs per active platform (up to 14 total) and inserts them into the `scraped_urls_history` database table with a status of `pending`/`processing`.
-4. **Batch Extraction (Apify):** The engine takes all 14 URLs and pushes them as a single array (`startUrls`) into **ONE** Apify Playwright Actor run.
-5. **LLM Mapping & Final Storage:** Apify returns an array of 14 scraped HTML payloads. The engine loops through this array, passes the text to the LLM mapper (`openai/gpt-4o-mini`) to extract structured event and organizer details, and inserts the final JSON into the `pending_scrapes` database table. The URL status in `scraped_urls_history` is marked as `success`.
-6. **Frontend Review:** The user opens the frontend **Scraped Events** tab, reviews the data in `pending_scrapes`, and clicks "Approve" (which moves the data to the permanent `events` and `organizations` tables) or "Reject".
+## 1. The Database Architecture
 
-## 2. Database Schema Interactions
+### A. The Alias Dictionary (organization_aliases)
+A new table will be created to store historical name mappings.
+- id (UUID)
+- org_id (Foreign Key -> organizations.id)
+- lias_name (String: The exact scraped name, e.g., "Wafflelogy Cafe")
+- platform (String: The source platform, e.g., "sortmyscene")
 
-The automated pipeline relies heavily on the PostgreSQL database to act as the source of truth and the queuing mechanism.
+*How it works:* The dictionary primarily relies on exact, deterministic mapping created by manual user actions. When the exact alias is found in the database, it requires zero compute.
 
-*   `scraping_platforms`: Stores the base domain and search string for the 7 supported platforms. Features an `is_active` boolean toggle so platforms can be disabled from the UI.
-*   `scraped_urls_history`: Acts as the native persistent queue. It tracks every discovered URL, its associated platform, discovery timestamp, and processing status (`processing`, `success`, `failed`). This guarantees that if the server crashes, no URLs are lost.
-*   `pending_scrapes`: The staging area. Once the LLM perfectly maps the event details, it lands here waiting for human approval.
+### B. Modifications to pending_scrapes
+- Add a new column: linked_org_id (UUID, nullable).
+- If an event is pre-linked by the automation or manually linked by the user, this column holds the target organization ID.
 
-## 3. Concurrency Strategy: Apify Request Queues
+### C. Modifications to organizations (Rich Data Persistence)
+- Add a new column: `rich_data` (JSONB).
+- When a completely new organization is scraped and approved, its entire suite of rich assets (logos, images, amenities, features, payments, accessibility, google business links, full descriptions) are permanently stored into this JSONB column. 
+- This enables the frontend to instantly display the exact, fully-formed profile of existing organizations without making slow, external API calls to Cohort.
+---
 
-Instead of utilizing heavy local queuing infrastructure like BullMQ, Redis, or `p-limit`, we leverage **Apify's Request Queue (AutoscaledPool)**.
+## 2. The Daily Scraping Pipeline (The "Learning" Automation)
 
-*   **The Inefficient Way (Individual Actors):** If the backend triggered Apify individually for all 14 URLs, we would pay the Apify container "boot-up" overhead fee 14 separate times. The server would also be managing 14 separate network connections.
-*   **Our Optimized Way (Batching):** By passing all 14 URLs to the `apify/playwright-scraper` in a single array (`startUrls`), Apify boots up exactly **one** container. Inside that cloud container, Apify dynamically opens multiple Playwright browser tabs (usually 2 to 5 at a time) depending on the available RAM. It scrapes all 14 URLs concurrently and returns a single array of results.
-*   **Result:** Maximum cost savings, native retry capabilities (handled by Apify), and near-zero load on the local Node.js server.
+When a new event is downloaded (e.g., organizer "Wafflelogy Cafe"), the pipeline runs a 2-Step matching engine:
 
-## 4. Architectural Decision: "Await" vs. "Webhook"
+1. **Deterministic Match (Database Alias Check):** It checks the organization_aliases table for an exact string match. If found, it links immediately.
+2. **Semantic Entity Resolution (LLM Check):** If no exact match is found, the pipeline passes the scraped name alongside existing database organizations to GPT-4o-mini. The LLM understands context and nuance (e.g., knowing that "Wafflelogy India" and "Wafflelogy Pvt Ltd" are semantically the same entity). If the LLM is highly confident in a match, it pre-links it.
 
-When triggering an Apify batch run, there are two primary architectures:
-1.  **Await Architecture:** The Node.js server sends the job to Apify and keeps the asynchronous connection open (`await client.actor.call()`), waiting for the results to come back.
-2.  **Webhook (Fire-and-Forget) Architecture:** The Node.js server sends the job to Apify and immediately hangs up (`client.actor.start()`). When Apify finishes 5 minutes later, it makes an HTTP POST request back to a public endpoint on the Node.js server containing the data.
+*Result:* The event is placed in the Scraped Events tab for review.
 
-**Why we explicitly chose the Await Architecture:**
+---
 
-*   **Node.js is Non-Blocking:** Awaiting a promise in Node.js does not consume CPU resources. The cron job thread simply sits in memory sleeping while Apify works. Because this is a persistent Express server (not a Serverless function like AWS Lambda/Vercel that times out), an idle 5-minute connection is completely harmless.
-*   **Scale:** We are scraping ~14 to 30 URLs per day. A Webhook architecture is designed for massive enterprise jobs (e.g., 50,000 URLs running for 12 hours) where keeping a connection open is impossible.
-*   **Architectural Simplicity:** Implementing a Webhook requires exposing a secure, public `/api/webhook` route to the internet, handling network retries, and restructuring the entire LLM-mapping logic to execute independently of the cron job. 
-*   **Conclusion:** By utilizing the `await` architecture, we achieve 100% of the cost-saving and concurrency benefits of the Apify batch run, while retaining a drastically simpler, cleaner, and strictly sequential local codebase.
+## 3. The Frontend (Scraped Events UI)
+
+### A. The "Link Status" Indicator
+- A new column is added to the Scraped Events table.
+- **Green Badge:** "Linked to: [Existing Org Name]" (Appears if linked_org_id is populated).
+- **Gray Badge:** "New Organization" (Appears if linked_org_id is null).
+
+### B. The Manual Search & Link Action
+- An action button (Search Icon) is added to each row.
+- Clicking it opens a **Shadcn Dialog containing a Shadcn Command/Combobox component**.
+- **Real-time Search:** As soon as the user types the very first letter (e.g., "W"), the Combobox instantly filters the list of existing organizations (fetching from both **Unclaimed** and **Claimed** tabs).
+- Selecting an organization instantly updates the linked_org_id for that event in the database, and the page refreshes to reflect the new link status.
+
+### C. The "Org Details" View (Dynamic & Locked Mode)
+The existing "View" button for Org Details heavily adapts based on the link status:
+- **If Linked (linked_org_id is set):** The form is pre-filled **exclusively** with the existing organization's `rich_data` (including the existing logo, images, features, description). Crucially, the entire form **locks into a read-only mode** (all inputs and upload buttons become disabled). Because this organization already exists and is perfected in our database, it cannot be accidentally edited while approving a new event.
+- **If Unlinked (New Org):** The form shows the newly scraped, raw data from the current event and remains completely editable.### D. Breaking the Link (Error Correction)
+If the automation makes a mistake and links an event to the wrong organization:
+- The user opens the "Org Details" view.
+- The user edits the fields (e.g., changes the name to a brand new organization).
+- Doing this automatically breaks the link (sets linked_org_id = null), treating it as a brand new organization.
+
+---
+
+## 4. The Approval Execution (pprovePendingScrape)
+
+When the user clicks **Approve** on a row in the Scraped Events tab:
+
+**Scenario A: It IS linked (linked_org_id is not null)**
+1. **Push Event:** The backend fetches the subcommunity_id of the linked organization and pushes the event directly to that Cohort Subcommunity.
+2. **Train AI:** The backend inserts the scraped organizer name into the organization_aliases table to ensure future events with this exact name are auto-linked via Step 1 (saving LLM costs).
+3. **Save Local:** The event is saved in the local events table with the existing org_id.
+4. **Dashboard Update:** The existing organization (whether it sits in the **Unclaimed** OR **Claimed** tab) gets a +1 to its event count. The actual event is appended to that organization, so when a user clicks "View" under Events, the new event will show up there with all its details.
+
+**Scenario B: It is NOT linked (linked_org_id is null)**
+1. **Standard Flow:** The backend creates a brand new Subcommunity on Cohort.
+2. **Push Event:** The event is pushed to the newly created Subcommunity.
+3. **Save Local:** A new organization row is created in the local database and moved to the Unclaimed Communities tab.
+4. **Train AI:** The scraped name is recorded in organization_aliases tied to this newly created organization.
+
+---
+
+## Summary of User Actions
+1. **Approve Pre-linked Event:** Click Approve. Event goes to the existing org. System gets smarter.
+2. **Change Pre-linked Event:** Click Search, instantly find a different Unclaimed/Claimed org via Shadcn Combobox. Form updates. Click Approve. Event goes to the newly chosen org.
+3. **Reject Pre-linked Event:** Open Org Details, edit the name to create a new org. Click Approve. Event creates a brand new org.

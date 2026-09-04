@@ -6,8 +6,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 const API_BASE = 'http://localhost:3000/api';
 
-export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, onRefresh: () => void, onClose: () => void }) {
+export function EditableOrgForm({ scrape, orgs, onRefresh, onClose }: { scrape: any, orgs?: any[], onRefresh: () => void, onClose: () => void }) {
     const originalPayload = typeof scrape.payload === 'string' ? JSON.parse(scrape.payload) : scrape.payload;
+    
+    // Auto-fill from Linked Org if it exists
+    const linkedOrg = scrape.linked_org_id && orgs ? orgs.find(o => o.id === scrape.linked_org_id) : null;
+    
     
     const [isSaving, setIsSaving] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -15,20 +19,22 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     
     // Form State
-    const [googleLink, setGoogleLink] = useState(originalPayload.googleBusinessLink || '');
-    const [orgName, setOrgName] = useState(originalPayload.primaryOrganizer || '');
-    const [phone, setPhone] = useState(originalPayload.contactInfo?.phones?.[0] || '');
-    const [email, setEmail] = useState(originalPayload.contactInfo?.emails?.[0] || '');
-    const [website, setWebsite] = useState(originalPayload.contactInfo?.website || '');
-    const [details, setDetails] = useState(originalPayload.mappedEventData?.description || '');
+
+    const [orgName, setOrgName] = useState(linkedOrg ? linkedOrg.name : (originalPayload.primaryOrganizer || ''));
+    const [phone, setPhone] = useState(linkedOrg && linkedOrg.contacts ? (linkedOrg.contacts.find((c: any) => c.contact_type === 'phone')?.contact_value || '') : (originalPayload.contactInfo?.phones?.[0] || ''));
+    const [email, setEmail] = useState(linkedOrg && linkedOrg.contacts ? (linkedOrg.contacts.find((c: any) => c.contact_type === 'email')?.contact_value || '') : (originalPayload.contactInfo?.emails?.[0] || ''));
+    const [website, setWebsite] = useState(linkedOrg?.website || originalPayload.contactInfo?.website || '');
     
-    const [logo, setLogo] = useState(originalPayload.logo || '');
-    const [images, setImages] = useState<string[]>(originalPayload.images || []);
-    
-    const [accessibility, setAccessibility] = useState<string[]>(originalPayload.accessibility || ['']);
-    const [offerings, setOfferings] = useState<string[]>(originalPayload.offerings || ['']);
-    const [amenities, setAmenities] = useState<string[]>(originalPayload.amenities || ['']);
-    const [payments, setPayments] = useState<string[]>(originalPayload.payments || ['']);
+    // Populate heavily-detailed fields from linked organization's rich_data if available
+    const [details, setDetails] = useState(linkedOrg ? (linkedOrg.rich_data?.description || '') : (originalPayload.mappedEventData?.description || ''));
+    const [logo, setLogo] = useState(linkedOrg ? (linkedOrg.rich_data?.logo || '') : (originalPayload.logo || ''));
+    const [images, setImages] = useState<string[]>(linkedOrg ? (linkedOrg.rich_data?.images || []) : (originalPayload.images || []));
+    const [accessibility, setAccessibility] = useState<string[]>(linkedOrg ? (linkedOrg.rich_data?.accessibility || ['']) : (originalPayload.accessibility || ['']));
+    const [offerings, setOfferings] = useState<string[]>(linkedOrg ? (linkedOrg.rich_data?.offerings || ['']) : (originalPayload.offerings || ['']));
+    const [amenities, setAmenities] = useState<string[]>(linkedOrg ? (linkedOrg.rich_data?.amenities || ['']) : (originalPayload.amenities || ['']));
+    const [payments, setPayments] = useState<string[]>(linkedOrg ? (linkedOrg.rich_data?.payments || ['']) : (originalPayload.payments || ['']));
+    const [googleLink, setGoogleLink] = useState(linkedOrg ? (linkedOrg.rich_data?.googleBusinessLink || '') : (originalPayload.googleBusinessLink || ''));
+
 
     const handleArrayChange = (setter: any, arr: string[], index: number, val: string) => {
         const newArr = [...arr];
@@ -46,6 +52,16 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            // If the user manually edited the name away from the linked org's name, break the link!
+            if (scrape.linked_org_id && linkedOrg && orgName !== linkedOrg.name) {
+                console.log("Name was edited. Breaking the link to create a new organization.");
+                await fetch(`${API_BASE}/pending-scrapes/${scrape.id}/link-org`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orgId: null })
+                });
+            }
+
             const updatedPayload = {
                 ...originalPayload,
                 primaryOrganizer: orgName,
@@ -165,7 +181,7 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                     </DialogTitle>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={onClose} className="h-8">Cancel</Button>
-                        <Button onClick={handleSave} disabled={isSaving} className="h-8">
+                        <Button onClick={handleSave} disabled={!!linkedOrg || isSaving} className="h-8">
                             {isSaving ? <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> : null}
                             Save Details
                         </Button>
@@ -186,7 +202,7 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                         <div className="flex items-center gap-2 mt-4">
                             <div className="relative flex-1">
                                 <LinkIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input 
+                                <Input disabled={!!linkedOrg} 
                                     className="pl-9 h-10" 
                                     placeholder="Google Business Profile link" 
                                     value={googleLink}
@@ -203,16 +219,16 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                     {/* About The Community */}
                     <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
                         <h3 className="font-semibold text-sm mb-4">About The Community</h3>
-                        <Input placeholder="Sub community name *" value={orgName} onChange={e => setOrgName(e.target.value)} />
-                        <Input placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)} />
-                        <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-                        <Input placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)} />
+                        <Input disabled={!!linkedOrg} placeholder="Sub community name *" value={orgName} onChange={e => setOrgName(e.target.value)} />
+                        <Input disabled={!!linkedOrg} placeholder="Phone number" value={phone} onChange={e => setPhone(e.target.value)} />
+                        <Input disabled={!!linkedOrg} placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+                        <Input disabled={!!linkedOrg} placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)} />
                     </div>
 
                     {/* Details */}
                     <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
                         <h3 className="font-semibold text-sm mb-4">Details</h3>
-                        <textarea 
+                        <textarea disabled={!!linkedOrg} 
                             className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             placeholder="Details"
                             value={details}
@@ -226,7 +242,7 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                             <h3 className="font-semibold text-sm mb-2">Sub community Images *</h3>
                             <p className="text-xs text-muted-foreground mb-4 max-w-[250px]">Cover image for the community profile</p>
                             <label className="w-48 h-32 bg-slate-100 rounded-lg border-2 border-dashed flex items-center justify-center text-muted-foreground hover:bg-slate-200 transition-colors cursor-pointer overflow-hidden relative group">
-                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
+                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={!!linkedOrg || isUploadingImage} />
                                 {isUploadingImage ? (
                                     <RefreshCw className="w-6 h-6 animate-spin" />
                                 ) : images[0] ? (
@@ -243,7 +259,7 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                             <h3 className="font-semibold text-sm mb-2">Sub community logo *</h3>
                             <p className="text-xs text-muted-foreground mb-4 max-w-[200px]">This image will be used as an identity in your Sub community app</p>
                             <label className="w-32 h-32 bg-slate-100 rounded-lg border-2 border-dashed flex items-center justify-center text-muted-foreground hover:bg-slate-200 transition-colors cursor-pointer overflow-hidden relative group">
-                                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isUploadingLogo} />
+                                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={!!linkedOrg || isUploadingLogo} />
                                 {isUploadingLogo ? (
                                     <RefreshCw className="w-6 h-6 animate-spin" />
                                 ) : logo ? (
@@ -266,14 +282,14 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="font-semibold text-sm">Accessibility</h4>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" onClick={() => addArrayItem(setAccessibility, accessibility)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" disabled={!!linkedOrg} onClick={() => addArrayItem(setAccessibility, accessibility)}>
                                     <Plus className="w-3 h-3" />
                                 </Button>
                             </div>
                             {accessibility.map((item, i) => (
                                 <div key={i} className="flex items-center gap-2">
-                                    <Input placeholder="Accessibility details" value={item} onChange={e => handleArrayChange(setAccessibility, accessibility, i, e.target.value)} />
-                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" onClick={() => removeArrayItem(setAccessibility, accessibility, i)}>
+                                    <Input disabled={!!linkedOrg} placeholder="Accessibility details" value={item} onChange={e => handleArrayChange(setAccessibility, accessibility, i, e.target.value)} />
+                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" disabled={!!linkedOrg} onClick={() => removeArrayItem(setAccessibility, accessibility, i)}>
                                         <Trash className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -284,14 +300,14 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="font-semibold text-sm">Offerings</h4>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" onClick={() => addArrayItem(setOfferings, offerings)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" disabled={!!linkedOrg} onClick={() => addArrayItem(setOfferings, offerings)}>
                                     <Plus className="w-3 h-3" />
                                 </Button>
                             </div>
                             {offerings.map((item, i) => (
                                 <div key={i} className="flex items-center gap-2">
-                                    <Input placeholder="Offerings details" value={item} onChange={e => handleArrayChange(setOfferings, offerings, i, e.target.value)} />
-                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" onClick={() => removeArrayItem(setOfferings, offerings, i)}>
+                                    <Input disabled={!!linkedOrg} placeholder="Offerings details" value={item} onChange={e => handleArrayChange(setOfferings, offerings, i, e.target.value)} />
+                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" disabled={!!linkedOrg} onClick={() => removeArrayItem(setOfferings, offerings, i)}>
                                         <Trash className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -302,14 +318,14 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="font-semibold text-sm">Amenities</h4>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" onClick={() => addArrayItem(setAmenities, amenities)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" disabled={!!linkedOrg} onClick={() => addArrayItem(setAmenities, amenities)}>
                                     <Plus className="w-3 h-3" />
                                 </Button>
                             </div>
                             {amenities.map((item, i) => (
                                 <div key={i} className="flex items-center gap-2">
-                                    <Input placeholder="Amenities details" value={item} onChange={e => handleArrayChange(setAmenities, amenities, i, e.target.value)} />
-                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" onClick={() => removeArrayItem(setAmenities, amenities, i)}>
+                                    <Input disabled={!!linkedOrg} placeholder="Amenities details" value={item} onChange={e => handleArrayChange(setAmenities, amenities, i, e.target.value)} />
+                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" disabled={!!linkedOrg} onClick={() => removeArrayItem(setAmenities, amenities, i)}>
                                         <Trash className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -320,14 +336,14 @@ export function EditableOrgForm({ scrape, onRefresh, onClose }: { scrape: any, o
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="font-semibold text-sm">Payments</h4>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" onClick={() => addArrayItem(setPayments, payments)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200" disabled={!!linkedOrg} onClick={() => addArrayItem(setPayments, payments)}>
                                     <Plus className="w-3 h-3" />
                                 </Button>
                             </div>
                             {payments.map((item, i) => (
                                 <div key={i} className="flex items-center gap-2">
-                                    <Input placeholder="Payment details" value={item} onChange={e => handleArrayChange(setPayments, payments, i, e.target.value)} />
-                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" onClick={() => removeArrayItem(setPayments, payments, i)}>
+                                    <Input disabled={!!linkedOrg} placeholder="Payment details" value={item} onChange={e => handleArrayChange(setPayments, payments, i, e.target.value)} />
+                                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 shrink-0" disabled={!!linkedOrg} onClick={() => removeArrayItem(setPayments, payments, i)}>
                                         <Trash className="w-4 h-4" />
                                     </Button>
                                 </div>

@@ -10,8 +10,10 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.57",
     "@tavily/core": "^0.7.7",
     "@types/pg": "^8.23.1",
+    "ai": "^7.0.91",
     "apify-client": "^2.9.0",
     "axios": "^1.6.8",
     "cheerio": "^1.2.0",
