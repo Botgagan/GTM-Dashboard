@@ -310,7 +310,10 @@ export async function approvePendingScrape(pendingId: string) {
             amenities: p.amenities,
             payments: p.payments,
             description: p.mappedEventData?.description,
-            googleBusinessLink: p.googleBusinessLink
+            googleBusinessLink: p.googleBusinessLink,
+            facebook: contactInfo.facebook,
+            instagram: contactInfo.instagram,
+            youtube: contactInfo.youtube
         }
     });
 

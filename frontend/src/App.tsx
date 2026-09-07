@@ -160,6 +160,15 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
           <Input className="h-8 text-xs w-full min-w-0" value={editData.website || ''} onChange={e => setEditData({...editData, website: e.target.value})} placeholder="Website" />
         </TableCell>
         <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
+          <Input className="h-8 text-xs w-full min-w-0" value={editData.rich_data?.facebook || ''} onChange={e => setEditData({...editData, rich_data: {...editData.rich_data, facebook: e.target.value}})} placeholder="Facebook" />
+        </TableCell>
+        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
+          <Input className="h-8 text-xs w-full min-w-0" value={editData.rich_data?.instagram || ''} onChange={e => setEditData({...editData, rich_data: {...editData.rich_data, instagram: e.target.value}})} placeholder="Instagram" />
+        </TableCell>
+        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
+          <Input className="h-8 text-xs w-full min-w-0" value={editData.rich_data?.youtube || ''} onChange={e => setEditData({...editData, rich_data: {...editData.rich_data, youtube: e.target.value}})} placeholder="YouTube" />
+        </TableCell>
+        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
           <Input className="h-8 text-xs w-full min-w-0" value={editData.admin_invite_link || ''} onChange={e => setEditData({...editData, admin_invite_link: e.target.value})} placeholder="Invite Link" />
         </TableCell>
         <TableCell className="text-center font-medium text-slate-500">{org.contacts_count || 0}</TableCell>
@@ -213,6 +222,27 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
           {org.website ? (
             <a href={org.website} target="_blank" rel="noreferrer" className="text-primary hover:underline text-[11px] break-all flex items-center gap-1">
                <LinkIcon className="w-3 h-3"/> Link
+            </a>
+          ) : '-'}
+        </TableCell>
+        <TableCell>
+          {org.rich_data?.facebook ? (
+            <a href={org.rich_data.facebook} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[11px] break-all flex items-center gap-1">
+               <LinkIcon className="w-3 h-3"/> FB
+            </a>
+          ) : '-'}
+        </TableCell>
+        <TableCell>
+          {org.rich_data?.instagram ? (
+            <a href={org.rich_data.instagram} target="_blank" rel="noreferrer" className="text-pink-600 hover:underline text-[11px] break-all flex items-center gap-1">
+               <LinkIcon className="w-3 h-3"/> IG
+            </a>
+          ) : '-'}
+        </TableCell>
+        <TableCell>
+          {org.rich_data?.youtube ? (
+            <a href={org.rich_data.youtube} target="_blank" rel="noreferrer" className="text-red-600 hover:underline text-[11px] break-all flex items-center gap-1">
+               <LinkIcon className="w-3 h-3"/> YT
             </a>
           ) : '-'}
         </TableCell>
@@ -1000,10 +1030,12 @@ export default function App() {
         <div className="flex items-center gap-4">
           <Select value={globalCityFilter} onValueChange={(v: any) => setGlobalCityFilter(v)}>
             <SelectTrigger className="w-[180px] h-9 bg-white">
-              <SelectValue placeholder="All Cities" />
+              <SelectValue placeholder="ALL" />
             </SelectTrigger>
-            <SelectContent>
-              {cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            <SelectContent className="max-h-[160px] overflow-y-auto">
+              <SelectItem value="All">ALL</SelectItem>
+              {cities.includes("Online") && <SelectItem value="Online">Online</SelectItem>}
+              {cities.filter(c => c !== "Online" && c.toLowerCase() !== "all").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -1134,6 +1166,9 @@ export default function App() {
                     <TableHead className="min-w-[150px]">Organization Name</TableHead>
                     <TableHead className="min-w-[150px]">Address</TableHead>
                     <TableHead>Website</TableHead>
+                    <TableHead>Facebook</TableHead>
+                    <TableHead>Instagram</TableHead>
+                    <TableHead>YouTube</TableHead>
                     <TableHead>Admin Invite Link</TableHead>
                     <TableHead>Contacts</TableHead>
                     <TableHead>Last Contacted</TableHead>

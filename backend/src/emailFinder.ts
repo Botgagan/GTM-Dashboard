@@ -84,6 +84,9 @@ export interface ContactInfo {
     address?: string;
     city?: string;
     members_count?: number;
+    facebook?: string;
+    instagram?: string;
+    youtube?: string;
 }
 
 export async function findEmailViaGoogleSearch(organizerName: string, locationStr: string): Promise<ContactInfo> {
@@ -128,6 +131,24 @@ export async function findEmailViaGoogleSearch(organizerName: string, locationSt
         }
         
         snippets += "ORGANIC RESULTS:\n" + searchResponse.organic.map((res: any) => `URL: ${res.link}\nTitle: ${res.title}\nContent: ${res.snippet}`).join("\n\n");
+
+        // Fast social media link extraction
+        let facebook, instagram, youtube;
+        if (searchResponse.organic && Array.isArray(searchResponse.organic)) {
+            for (const res of searchResponse.organic) {
+                const url = res.link.toLowerCase();
+                // Match profile links, avoid root homepage or login pages
+                if (!facebook && url.includes('facebook.com/') && !url.includes('/login') && !url.includes('/share') && new URL(res.link).pathname.length > 2) {
+                    facebook = res.link;
+                }
+                if (!instagram && url.includes('instagram.com/') && !url.includes('/p/') && !url.includes('/reel/') && !url.includes('/explore') && new URL(res.link).pathname.length > 2) {
+                    instagram = res.link;
+                }
+                if (!youtube && url.includes('youtube.com/') && !url.includes('/watch') && !url.includes('/results') && new URL(res.link).pathname.length > 2) {
+                    youtube = res.link;
+                }
+            }
+        }
 
         const urlPrompt = `You are an AI assistant helping to find the official website for an event organizer.
         Organizer Name: "${organizerName}"
@@ -212,7 +233,7 @@ export async function findEmailViaGoogleSearch(organizerName: string, locationSt
         const website = officialUrl !== "none" ? officialUrl : undefined;
 
         console.log(`✅ Extracted: ${emails.length} emails, ${phones.length} phones, Address: ${address}, City: ${city}, Members: ${members_count}, Website: ${website}`);
-        return { emails, phones, address, city, website, members_count };
+        return { emails, phones, address, city, website, members_count, facebook, instagram, youtube };
 
     } catch (e: any) {
         console.error("Google Search / AI Error:", e.message);

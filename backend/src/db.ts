@@ -69,8 +69,8 @@ export async function updateOrganizationStatus(id: string, status: string, owner
 }
 
 export async function updateOrganization(id: string, data: any) {
-    const fields = ['name', 'community_name', 'created_for', 'owner', 'members_count', 'org_name', 'city', 'address', 'website', 'status', 'hind_status', 'admin_invite_link'];
-    const setClauses = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
+    const fields = ['name', 'community_name', 'created_for', 'owner', 'members_count', 'org_name', 'city', 'address', 'website', 'status', 'hind_status', 'admin_invite_link', 'rich_data'];
+    const setClauses = fields.map((f, i) => `${f} = ${i + 2}`).join(', ');
     const values = fields.map(f => data[f]);
     await pool.query(`UPDATE organizations SET ${setClauses} WHERE id = $1`, [id, ...values]);
 }
@@ -291,7 +291,7 @@ export async function getDashboardData(city?: string) {
 
 
 export async function getCities() {
-    const res = await pool.query(`SELECT DISTINCT location FROM events WHERE location IS NOT NULL AND location != 'Online'`);
+    const res = await pool.query(`SELECT DISTINCT location FROM events WHERE location IS NOT NULL`);
     const rawLocations = res.rows.map(r => r.location);
     const cities = new Set<string>();
     for (const loc of rawLocations) {
