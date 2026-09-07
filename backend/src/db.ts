@@ -163,7 +163,7 @@ export async function markOrgAsContacted(orgId: string) {
 export async function getOrgEvents(orgId: string, city?: string) {
     if (city) {
         const res = await pool.query(
-            `SELECT * FROM events WHERE org_id = $1 AND location ILIKE $2 ORDER BY created_at DESC`,
+            `SELECT * FROM events WHERE org_id = $1 AND city ILIKE $2 ORDER BY created_at DESC`,
             [orgId, `%${city}%`]
         );
         return res.rows;
@@ -180,8 +180,12 @@ export async function insertEvent(data: {
     orgId: string;
     title: string;
     eventDate?: string;
+    startDate?: string;
+    startTime?: string;
     endDate?: string;
+    endTime?: string;
     location?: string;
+    city?: string;
     hindUrl?: string;
     sourceUrl?: string;
     cohortEventId?: string;
@@ -189,14 +193,19 @@ export async function insertEvent(data: {
     hindStatus?: string;
 }) {
     await pool.query(
-        `INSERT INTO events (org_id, title, event_date, end_date, location, hind_url, source_url, cohort_event_id, status, hind_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO events (org_id, title, event_date, start_date, start_time, end_date, end_time, location, city, hind_url, source_url, cohort_event_id, status, hind_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+
         [
             data.orgId,
             data.title,
             data.eventDate || null,
+            data.startDate || null,
+            data.startTime || null,
             data.endDate || null,
+            data.endTime || null,
             data.location || null,
+            data.city || null,
             data.hindUrl || null,
             data.sourceUrl || null,
             data.cohortEventId || null,
@@ -207,7 +216,7 @@ export async function insertEvent(data: {
 }
 
 export async function createEvent(orgId: string, eventData: any) {
-    const fields = ['title', 'status', 'event_date', 'end_date', 'location', 'hind_url', 'hind_status', 'source_url', 'sent_on'];
+    const fields = ['title', 'status', 'start_date', 'start_time', 'end_date', 'end_time', 'location', 'hind_url', 'hind_status', 'source_url', 'sent_on'];
     const keys = fields.join(', ');
     const vals = fields.map((_, i) => `$${i + 2}`).join(', ');
     const values = fields.map(f => eventData[f]);
@@ -216,7 +225,7 @@ export async function createEvent(orgId: string, eventData: any) {
 }
 
 export async function updateEvent(id: string, data: any) {
-    const fields = ['title', 'status', 'event_date', 'end_date', 'location', 'hind_url', 'hind_status', 'source_url', 'sent_on'];
+    const fields = ['title', 'status', 'start_date', 'start_time', 'end_date', 'end_time', 'location', 'hind_url', 'hind_status', 'source_url', 'sent_on'];
     const setClauses = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
     const values = fields.map(f => data[f]);
     await pool.query(`UPDATE events SET ${setClauses} WHERE id = $1`, [id, ...values]);
@@ -304,7 +313,7 @@ export async function getPendingScrapes(city?: string) {
     `;
     if (city) {
         const res = await pool.query(
-            query + ` WHERE ps.payload::jsonb -> 'mappedEventData' ->> 'location' ILIKE $1 ORDER BY ps.created_at DESC`,
+            query + ` WHERE ps.payload::jsonb -> 'contactInfo' ->> 'city' ILIKE $1 ORDER BY ps.created_at DESC`,
             [`%${city}%`]
         );
         return res.rows;

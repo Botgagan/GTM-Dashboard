@@ -31,6 +31,13 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
         try {
             const updatedPayload = {
                 ...originalPayload,
+                eventTitle: title,
+                finalLocation: location,
+                fullStartTimestamp: `${date}T${startTime}:00${timezoneOffset}`,
+                contactInfo: {
+                    ...(originalPayload.contactInfo || {}),
+                    city: city
+                },
                 mappedEventData: {
                     ...originalPayload.mappedEventData,
                     title,

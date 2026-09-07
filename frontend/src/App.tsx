@@ -1,3 +1,6 @@
+import { Calendar as CalendarUI } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { X } from "lucide-react";
 import { EditableOrgForm } from './EditableOrgForm';
 import { EditableEventForm } from './EditableEventForm';
 import React, { useState, useEffect, useRef } from 'react';
@@ -16,59 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-// Format helper to match: "Tue, 22 Sep 2026 • 7:00 PM to Thu, 24 Sep 2026 • 11:00 PM (IST)"
-function formatEventDateTimeString(dateStr: string, startTime?: string, endDateStr?: string, endTime?: string, tzOffsetStr?: string) {
-  const parseDate = (d: string, t?: string) => {
-    try {
-      const dt = new Date(`${d}T${t || '00:00:00'}`);
-      if (!isNaN(dt.getTime())) return dt;
-    } catch(e){}
-    return null;
-  };
-  
-  const formatPart = (d: Date, tStr?: string) => {
-    let dStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
-    dStr = dStr.replace(/^([A-Za-z]+)\s/, '$1, ');
-    const timeStr = tStr ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-    return timeStr ? `${dStr} • ${timeStr}` : dStr;
-  };
-
-  const sd = parseDate(dateStr, startTime);
-  const ed = (endDateStr && endDateStr !== "2026-08-15") ? parseDate(endDateStr, endTime) : null;
-  
-  let result = "";
-  if (sd) {
-    result += formatPart(sd, startTime);
-  } else {
-    result += dateStr + (startTime ? ` • ${startTime}` : '');
-  }
-  
-  if (ed || (endDateStr && endDateStr !== "2026-08-15")) {
-    result += " to ";
-    if (ed) {
-      result += formatPart(ed, endTime);
-    } else {
-      result += endDateStr + (endTime ? ` • ${endTime}` : '');
-    }
-  }
-  
-  // Add Timezone string based on offset (e.g., "-07:00" -> PST, "+05:30" -> IST)
-  let tzLabel = "";
-  if (tzOffsetStr === "+05:30") tzLabel = "IST";
-  else if (tzOffsetStr === "-07:00") tzLabel = "PDT/PST";
-  else if (tzOffsetStr === "-08:00") tzLabel = "PST";
-  else if (tzOffsetStr === "-04:00") tzLabel = "EDT/EST";
-  else if (tzOffsetStr === "-05:00") tzLabel = "EST";
-  else if (tzOffsetStr === "+00:00" || tzOffsetStr === "Z") tzLabel = "UTC";
-  else if (tzOffsetStr) tzLabel = `UTC${tzOffsetStr}`;
-  
-  if (tzLabel) {
-    result += ` (${tzLabel})`;
-  }
-  
-  return result;
-}
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -368,18 +318,59 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
 
 function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrapes: any[], orgs: any[], onRefresh: () => void }) {
   const [expandedPending, setExpandedPending] = useState<{ id: string, type: 'org' | 'contacts' } | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [date, setDate] = React.useState<Date | undefined>(undefined);
 
   const activeScrape = expandedPending ? pendingScrapes.find(s => s.id === expandedPending.id) : null;
   
+  const filteredScrapes = pendingScrapes.filter(scrape => {
+      if (!date) return true;
+      let payload: any = {};
+      try {
+        payload = typeof scrape.payload === 'string' ? JSON.parse(scrape.payload) : scrape.payload;
+      } catch (e) {
+        return false;
+      }
+      const ev = payload?.mappedEventData || {};
+      if (!ev.date) return false;
+      let evDate = new Date(ev.date);
+      if (isNaN(evDate.getTime()) && ev.date.includes('/')) {
+          const parts = ev.date.split('/');
+          if (parts.length === 3) {
+              evDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+              if (isNaN(evDate.getTime())) evDate = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+          }
+      }
+      if (!isNaN(evDate.getTime())) {
+          return evDate.getFullYear() === date.getFullYear() && evDate.getMonth() === date.getMonth() && evDate.getDate() === date.getDate();
+      }
+      return false;
+  });
 
   return (
-    <>
+    <div className="flex flex-col w-full">
+      <div className="flex justify-end items-center gap-2 p-3 border-b">
+        {date && (
+          <Button variant="ghost" size="sm" onClick={() => setDate(undefined)} className="h-9 px-2 text-slate-500 hover:text-slate-700">
+            <X className="w-4 h-4 mr-1" /> Clear Filter
+          </Button>
+        )}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger render={<Button variant="outline" id="date" className="justify-start font-normal">{date ? date.toLocaleDateString() : "Select date"}</Button>} />
+          <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+            <CalendarUI mode="single" selected={date} month={date} onSelect={(d: any) => { setDate(d); setOpen(false); }} />
+          </PopoverContent>
+        </Popover>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Event Title</TableHead>
             <TableHead>New/Existing Org</TableHead>
-            <TableHead>Date & Time</TableHead>
+            <TableHead>Start Date</TableHead>
+            <TableHead>Start Time</TableHead>
+            <TableHead>End Date</TableHead>
+            <TableHead>End Time</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Source URL</TableHead>
             <TableHead>Org Details</TableHead>
@@ -387,38 +378,25 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
           </TableRow>
         </TableHeader>
         <TableBody>
-          {pendingScrapes.length === 0 ? (
+          {filteredScrapes.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                 No pending scraped events.
               </TableCell>
             </TableRow>
           ) : (
-            pendingScrapes.map(scrape => (
-              <PendingEventRow 
-                key={scrape.id} 
-                scrape={scrape} 
-                orgs={orgs}
-                onRefresh={onRefresh} 
-                onViewOrg={() => setExpandedPending({ id: scrape.id, type: 'org' })}
-              />
+            filteredScrapes.map((scrape: any) => (
+              <PendingEventRow key={scrape.id} scrape={scrape} orgs={orgs} onRefresh={onRefresh} onViewOrg={() => setExpandedPending({ id: scrape.id, type: 'org' })} />
             ))
           )}
         </TableBody>
       </Table>
-
-            {expandedPending !== null && activeScrape && (
-        <EditableOrgForm 
-          scrape={activeScrape} 
-          orgs={orgs}
-          onRefresh={onRefresh} 
-          onClose={() => setExpandedPending(null)} 
-        />
+      {expandedPending !== null && activeScrape && (
+        <EditableOrgForm scrape={activeScrape} orgs={orgs} onRefresh={onRefresh} onClose={() => setExpandedPending(null)} />
       )}
-    </>
+    </div>
   );
 }
-
 function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, orgs: any[], onRefresh: () => void, onViewOrg: () => void }) {
   const [isLinking, setIsLinking] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -471,13 +449,7 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
 
   const isResolved = scrape.status === 'approved' || scrape.status === 'rejected';
 
-  const dateDisplay = formatEventDateTimeString(
-     ev.date, 
-     ev.startTime, 
-     ev.endDate, 
-     ev.endTime, 
-     payload.mappedEventData?.timezoneOffset
-  );
+  
 
   return (
     <TableRow className={cn("bg-white", isResolved && "opacity-60")}>
@@ -501,18 +473,19 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
           </Badge>
         )}
       </TableCell>
-      <TableCell className="whitespace-nowrap">
-        <span className="font-semibold text-slate-900 text-[11px]">{dateDisplay}</span>
-      </TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.date || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.startTime || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.endDate || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.endTime || 'N/A'}</span></TableCell>
       <TableCell className="max-w-[200px] whitespace-normal">
         {(() => {
-           const loc = payload.finalLocation || 'Online';
-           if (loc === 'Online') return <span className="font-medium text-[11px]">Online</span>;
-           const parts = loc.split('\n');
+           const city = payload.contactInfo?.city || ev?.city;
+           const area = payload.finalLocation || ev?.location;
+           if (!city && (!area || area === 'Online')) return <span className="font-medium text-[11px]">Online</span>;
            return (
              <div className="flex flex-col gap-0.5">
-               <span className="font-semibold text-slate-900 text-[11px]">{parts[0]}</span>
-               {parts[1] && <span className="text-[10px] text-muted-foreground leading-tight">{parts[1]}</span>}
+               {city && <span className="font-semibold text-slate-900 text-[11px]">{city}</span>}
+               {area && area !== 'Online' && <span className="text-[10px] text-muted-foreground leading-tight">{area}</span>}
              </div>
            );
         })()}
@@ -1518,43 +1491,22 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
           {event.status}
         </Badge>
       </TableCell>
-      <TableCell className="whitespace-nowrap">
-        {event.event_date ? (
-           <span className="font-semibold text-slate-900 text-[11px]">{
-             (() => {
-                try {
-                  const formatPart = (d: Date) => {
-                    let dStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
-                    dStr = dStr.replace(/^([A-Za-z]+)\s/, '$1, ');
-                    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                    return `${dStr} • ${timeStr}`;
-                  };
-                  // Strip timezone offset (Z or +05:30) to prevent browser from shifting the time
-                  const cleanStartDate = event.event_date.substring(0, 19);
-                  const sd = new Date(cleanStartDate);
-                  if (isNaN(sd.getTime())) return event.event_date;
-                  let res = formatPart(sd);
-                  if (event.end_date && event.end_date !== "2026-08-15") {
-                     const cleanEndDate = event.end_date.substring(0, 19);
-                     const ed = new Date(cleanEndDate);
-                     if (!isNaN(ed.getTime())) res += " to " + formatPart(ed);
-                  }
-                  // We can't know the original timezone from postgres UTC string reliably here,
-                  // but assuming the user wants to see it in their local timezone (IST):
-                  res += " (IST)";
-                  return res;
-                } catch(e) { return event.event_date; }
-             })()
-           }</span>
-        ) : '-'}
-      </TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_date || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_time || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_date || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_time || 'N/A'}</span></TableCell>
       <TableCell className="max-w-[200px] whitespace-normal">
-        {event.location ? (
-          <div className="flex flex-col gap-0.5">
-            <span className="font-semibold text-slate-900">{event.location.split('\n')[0]}</span>
-            {event.location.split('\n')[1] && <span className="text-[10px] text-muted-foreground leading-tight">{event.location.split('\n')[1]}</span>}
-          </div>
-        ) : '-'}
+        {(() => {
+           const city = event.city;
+           const area = event.location;
+           if (!city && (!area || area === 'Online')) return <span className="font-medium text-[11px]">Online</span>;
+           return (
+             <div className="flex flex-col gap-0.5">
+               {city && <span className="font-semibold text-slate-900 text-[11px]">{city}</span>}
+               {area && area !== 'Online' && <span className="text-[10px] text-muted-foreground leading-tight">{area}</span>}
+             </div>
+           );
+        })()}
       </TableCell>
       <TableCell>
         {event.hind_url ? (
@@ -1628,7 +1580,10 @@ function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: Event[
             <TableRow>
               <TableHead>Event Title</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Date & Time</TableHead>
+              <TableHead>Start Date</TableHead>
+              <TableHead>Start Time</TableHead>
+              <TableHead>End Date</TableHead>
+              <TableHead>End Time</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Hind Event URL</TableHead>
               <TableHead className="min-w-[120px] h-10 mt-1">
