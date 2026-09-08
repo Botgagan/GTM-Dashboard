@@ -3,6 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { X } from "lucide-react";
 import { EditableOrgForm } from './EditableOrgForm';
 import { EditableEventForm } from './EditableEventForm';
+import { EditableOrgDialog } from './EditableOrgDialog';
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, CheckCircle, XCircle, AlertCircle, MoreHorizontal, Edit, Trash, Plus, Link as LinkIcon, Search, Play, Activity, RefreshCw, Users, Calendar, Settings, Loader2 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -18,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 
 function cn(...inputs: ClassValue[]) {
@@ -89,31 +91,6 @@ function getDomainName(urlStr: string | null): string {
 
 function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly, sendingToInstantly, onRefresh, linkingManualOrg, handleLinkManualOrg }: any) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(org);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      if (org.id.startsWith('new-')) {
-        await fetch(`${API_BASE}/org`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editData)
-        });
-      } else {
-        await fetch(`${API_BASE}/org/${org.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editData)
-        });
-      }
-      setIsEditing(false);
-      onRefresh();
-    } catch (e) {
-      console.error(e);
-      alert('Failed to save organization');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleDelete = async () => {
     if (!window.confirm('Delete this organization completely?')) return;
     if (!org.id.startsWith('new-')) {
@@ -123,71 +100,12 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
   };
 
   if (isEditing) {
-    return (
-      <TableRow className="bg-muted/50 align-top">
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.name || ''} onChange={e => setEditData({...editData, name: e.target.value})} placeholder="Subcommunity Name" />
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.community_name || ''} onChange={e => setEditData({...editData, community_name: e.target.value})} placeholder="Community" />
-        </TableCell>
-        <TableCell className="w-[120px] max-w-[120px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.created_for || ''} onChange={e => setEditData({...editData, created_for: e.target.value})} placeholder="Created For" />
-        </TableCell>
-        <TableCell className="w-[100px] max-w-[100px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.owner || ''} onChange={e => setEditData({...editData, owner: e.target.value})} placeholder="Owner" />
-        </TableCell>
-        <TableCell className="w-[60px] max-w-[60px] overflow-hidden">
-          <Input type="number" className="h-8 text-xs w-full min-w-0 text-center" value={editData.members_count || 0} onChange={e => setEditData({...editData, members_count: parseInt(e.target.value)||0})} />
-        </TableCell>
-        <TableCell>
-          <Select value={editData.hind_status === 'published' ? 'published' : 'unpublished'} onValueChange={(v) => setEditData({...editData, hind_status: v})}>
-            <SelectTrigger className="h-8 text-xs w-[110px]"><SelectValue placeholder="Hind Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="published">Published</SelectItem>
-              <SelectItem value="unpublished">Unpublished</SelectItem>
-            </SelectContent>
-          </Select>
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.org_name || ''} onChange={e => setEditData({...editData, org_name: e.target.value})} placeholder="Org Name" />
-        </TableCell>
-        <TableCell className="w-[200px] max-w-[200px] overflow-hidden space-y-1">
-           <Input className="h-8 text-xs w-full min-w-0" value={editData.city || ''} onChange={e => setEditData({...editData, city: e.target.value})} placeholder="City" />
-           <Input className="h-8 text-xs w-full min-w-0" value={editData.address || ''} onChange={e => setEditData({...editData, address: e.target.value})} placeholder="Address" />
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.website || ''} onChange={e => setEditData({...editData, website: e.target.value})} placeholder="Website" />
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.rich_data?.facebook || ''} onChange={e => setEditData({...editData, rich_data: {...editData.rich_data, facebook: e.target.value}})} placeholder="Facebook" />
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.rich_data?.instagram || ''} onChange={e => setEditData({...editData, rich_data: {...editData.rich_data, instagram: e.target.value}})} placeholder="Instagram" />
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.rich_data?.youtube || ''} onChange={e => setEditData({...editData, rich_data: {...editData.rich_data, youtube: e.target.value}})} placeholder="YouTube" />
-        </TableCell>
-        <TableCell className="w-[150px] max-w-[150px] overflow-hidden">
-          <Input className="h-8 text-xs w-full min-w-0" value={editData.admin_invite_link || ''} onChange={e => setEditData({...editData, admin_invite_link: e.target.value})} placeholder="Invite Link" />
-        </TableCell>
-        <TableCell className="text-center font-medium text-slate-500">{org.contacts_count || 0}</TableCell>
-        <TableCell className="text-slate-500 text-[10px]">{org.last_contacted_at ? new Date(org.last_contacted_at).toLocaleDateString() : '-'}</TableCell>
-        <TableCell className="text-center font-medium text-slate-500">{org.events_count || 0}</TableCell>
-        <TableCell className="text-right align-top">
-          <div className="flex flex-col items-end gap-2">
-            <div className="flex gap-2">
-              <Button size="sm" variant="default" onClick={handleSave} disabled={isSaving}>Save</Button>
-              <Button size="sm" variant="outline" onClick={() => { setIsEditing(false); if(org.id.startsWith('new-')) onRefresh(); }}>Cancel</Button>
-            </div>
-          </div>
-        </TableCell>
-      </TableRow>
-    );
-  }
+    // We now just let the normal row render, and attach the Dialog below it.
+}
 
   return (
     <React.Fragment>
+      {isEditing && <EditableOrgDialog org={org} onClose={() => setIsEditing(false)} onRefresh={onRefresh} />}
       <TableRow className="group align-top">
         <TableCell className="font-semibold text-slate-900 max-w-[150px] truncate select-all cursor-text" title={org.name || ''}>
           <div className="flex items-center gap-2 truncate">
@@ -509,7 +427,7 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
       <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.endTime || 'N/A'}</span></TableCell>
       <TableCell className="max-w-[200px] whitespace-normal">
         {(() => {
-           const city = payload.contactInfo?.city || ev?.city;
+           const city = ev?.city || payload.contactInfo?.city;
            const area = payload.finalLocation || ev?.location;
            if (!city && (!area || area === 'Online')) return <span className="font-medium text-[11px]">Online</span>;
            return (
@@ -1326,21 +1244,96 @@ function EditableContactRow({ contact, onToggle, orgId, onRefresh }: any) {
 
   if (isEditing) {
     return (
-      <TableRow className="bg-muted/50">
-        <TableCell><Input className="h-8 text-xs" value={editData.name || ''} onChange={e => setEditData({...editData, name: e.target.value})} placeholder="Name" /></TableCell>
-        <TableCell><Input className="h-8 text-xs" value={editData.title || ''} onChange={e => setEditData({...editData, title: e.target.value})} placeholder="Title" /></TableCell>
-        <TableCell><Input className="h-8 text-xs" value={editData.email || ''} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="Email" /></TableCell>
-        <TableCell><Input className="h-8 text-xs" value={editData.phone || ''} onChange={e => setEditData({...editData, phone: e.target.value})} placeholder="Phone" /></TableCell>
-        <TableCell><Input className="h-8 text-xs" value={editData.social || ''} onChange={e => setEditData({...editData, social: e.target.value})} placeholder="Social Link" /></TableCell>
-        <TableCell><Input className="h-8 text-xs" value={editData.source || ''} onChange={e => setEditData({...editData, source: e.target.value})} placeholder="Source" /></TableCell>
-        <TableCell className="text-muted-foreground">-</TableCell>
-        <TableCell className="text-right">
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="default" onClick={handleSave} disabled={isSaving}>Save</Button>
-            <Button size="sm" variant="outline" onClick={() => { setIsEditing(false); if(contact.id.startsWith('new-')) onRefresh(); }}>Cancel</Button>
-          </div>
-        </TableCell>
+      <React.Fragment>
+        <Dialog open={true} onOpenChange={(isOpen) => !isOpen && setIsEditing(false)}>
+            <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col p-0 overflow-hidden bg-slate-50/50">
+                <DialogHeader className="px-6 py-4 border-b bg-white flex-shrink-0">
+                    <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-indigo-600"/> Edit Live Event Details
+                    </DialogTitle>
+                </DialogHeader>
+                
+                <div className="p-6 space-y-8 bg-slate-50/50 overflow-y-auto flex-1">
+                    <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
+                        <h3 className="font-semibold text-sm mb-4">Event Basics</h3>
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Event Title</label>
+                            <Input value={editData.title || ''} onChange={e => setEditData({...editData, title: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Date/Time</label>
+                                <Input value={editData.event_date || ''} onChange={e => setEditData({...editData, event_date: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Status</label>
+                                <Select value={editData.status || 'new'} onValueChange={(v) => setEditData({...editData, status: v})}>
+                                    <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="new">New</SelectItem>
+                                        <SelectItem value="ongoing">Ongoing</SelectItem>
+                                        <SelectItem value="expired">Expired</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
+                        <h3 className="font-semibold text-sm mb-4">External Links & Location</h3>
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Location</label>
+                            <Input value={editData.location || ''} onChange={e => setEditData({...editData, location: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Hind URL</label>
+                                <Input value={editData.hind_url || ''} onChange={e => setEditData({...editData, hind_url: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Source URL</label>
+                                <Input value={editData.source_url || ''} onChange={e => setEditData({...editData, source_url: e.target.value})} />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Hind Status</label>
+                            <Select value={editData.hind_status || 'unpublished'} onValueChange={(v) => setEditData({...editData, hind_status: v})}>
+                                <SelectTrigger><SelectValue placeholder="Hind Status" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="unpublished">Unpublished</SelectItem>
+                                    <SelectItem value="published">Published</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+                
+                <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex-shrink-0">
+                    <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                        Save Event
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+      <TableRow className="opacity-50">
+          <TableCell className="font-medium max-w-[200px] truncate">{event.title}</TableCell>
+          <TableCell><Badge variant="secondary" className="capitalize">{event.status}</Badge></TableCell>
+          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_date || 'N/A'}</span></TableCell>
+          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_time || 'N/A'}</span></TableCell>
+          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_date || 'N/A'}</span></TableCell>
+          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_time || 'N/A'}</span></TableCell>
+          <TableCell className="max-w-[200px] whitespace-normal">
+            <span className="text-[11px]">{event.location || 'Online'}</span>
+          </TableCell>
+          <TableCell>-</TableCell>
+          <TableCell>-</TableCell>
+          <TableCell>-</TableCell>
+          <TableCell>-</TableCell>
+          <TableCell>-</TableCell>
       </TableRow>
+      </React.Fragment>
     );
   }
 

@@ -20,10 +20,7 @@ export async function scrapeAllEvents(url: string) {
         const run = await client.actor("apify/playwright-scraper").call({
             startUrls: [{ url }],
             pageFunction,
-            proxyConfiguration: {
-                useApifyProxy: true,
-                apifyProxyGroups: ["RESIDENTIAL"]
-            }
+            proxyConfiguration: { useApifyProxy: true }
         });
 
         const { items } = await client.dataset(run.defaultDatasetId).listItems();
@@ -45,10 +42,7 @@ export async function scrapeBatchWithApify(urls: string[]) {
         const run = await client.actor("apify/playwright-scraper").call({
             startUrls: urls.map(url => ({ url })),
             pageFunction,
-            proxyConfiguration: {
-                useApifyProxy: true,
-                apifyProxyGroups: ["RESIDENTIAL"]
-            }
+            proxyConfiguration: { useApifyProxy: true }
         });
 
         const { items } = await client.dataset(run.defaultDatasetId).listItems();

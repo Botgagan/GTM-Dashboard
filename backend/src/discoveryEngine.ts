@@ -150,18 +150,19 @@ export async function runDailyDiscovery() {
         });
 
         try {
+            console.log(`\n[Discovery Engine] Initiating extraction for: ${item.url}`);
             if (scrapedData) {
-                console.log(`\n[Discovery Engine] Initiating extraction for: ${item.url}`);
                 await processUrl(item.url, (msg) => console.log(`   > ${msg}`), scrapedData);
-                
-                await pool.query(
-                    `UPDATE scraped_urls_history SET status = 'success', processed_at = NOW() WHERE id = $1`,
-                    [dbId]
-                );
-                console.log(`[Discovery Engine] ✅ Successfully processed: ${item.url}`);
             } else {
-                throw new Error("Apify did not return data for this URL");
+                console.log(`[Discovery Engine] Apify data missing for ${item.url}, relying on Cheerio fallback inside pipeline...`);
+                await processUrl(item.url, (msg) => console.log(`   > ${msg}`));
             }
+            
+            await pool.query(
+                `UPDATE scraped_urls_history SET status = 'success', processed_at = NOW() WHERE id = $1`,
+                [dbId]
+            );
+            console.log(`[Discovery Engine] ? Successfully processed: ${item.url}`);
         } catch (error: any) {
             console.error(`[Discovery Engine] ❌ Failed to process ${item.url}:`, error.message);
             await pool.query(

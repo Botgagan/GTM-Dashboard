@@ -443,21 +443,26 @@ export async function retryManualOrg(localOrgId: string, manualOrgId: string) {
         }
     }
 
-    // 4. Update the organization in our local DB with ALL fresh API data!
-    await updateOrganization(localOrgId, {
-        subcommunityId: manualOrgId,
-        name: updatedName,
-        orgName: updatedName,
-        website: updatedWebsite,
-        city: updatedCity,
-        address: updatedAddress,
-        hindStatus: updatedHindStatus,
-        communityName: updatedCommunityName || undefined,
-        createdFor: 'event',
-        owner: 'hind admin',
-        failureReason: null,
-        status: 'unclaimed'
-    });
+    // 4. Update the organization in our local DB safely!
+    // We explicitly avoid updateOrganization() here because it is a "full replace" function
+    // that accidentally nullifies missing fields like rich_data and address.
+    await pool.query(`
+        UPDATE organizations 
+        SET 
+            subcommunity_id = $1,
+            name = COALESCE($2, name),
+            org_name = COALESCE($3, org_name),
+            website = COALESCE($4, website),
+            hind_status = $5,
+            community_name = COALESCE($6, community_name),
+            created_for = 'event',
+            owner = 'hind admin',
+            failure_reason = NULL,
+            status = 'unclaimed',
+            updated_at = NOW()
+        WHERE id = $7
+    `, [manualOrgId, updatedName, updatedName, updatedWebsite, updatedHindStatus, updatedCommunityName, localOrgId]);
+
     if (updatedMembersCount > 0) {
         await pool.query('UPDATE organizations SET members_count = $1 WHERE id = $2', [updatedMembersCount, localOrgId]);
     }
@@ -493,7 +498,7 @@ export async function retryManualOrg(localOrgId: string, manualOrgId: string) {
     try {
         const adminInviteLink = await apiClient.getAdminInviteLink(manualOrgId);
         if (adminInviteLink && adminInviteLink !== "Not Generated") {
-            await updateOrganization(localOrgId, { adminInviteLink });
+            await pool.query("UPDATE organizations SET admin_invite_link = $1 WHERE id = $2", [adminInviteLink, localOrgId]);
         }
     } catch(e) { console.error("Failed to fetch admin link on manual retry"); }
 

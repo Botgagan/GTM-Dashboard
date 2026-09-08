@@ -249,7 +249,11 @@ export async function createSubcommunity(organizerName: string, phoneStr: string
     const primaryPhone = phoneMatch ? phoneMatch[1].trim() : "";
 
     // Hardcode the original adminId that is actually a member of the community
-    let adminId = 'df0e077b-a203-48a3-acc1-41da79656543'; 
+        let adminId = 'df0e077b-a203-48a3-acc1-41da79656543';
+    
+    // The Cohort API expects the Community Membership ID, NOT the User's dbId!
+    // Using the ID provided by the user's admin list response.
+    adminId = 'c32158f7-91ab-40a2-a0bc-504d9a4f96fd'; 
 
     const contactInfoObj: any = { email: primaryEmail };
     if (primaryPhone) {

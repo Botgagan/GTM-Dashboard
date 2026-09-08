@@ -162,6 +162,10 @@ export function EditableOrgForm({ scrape, orgs, onRefresh, onClose }: { scrape: 
             if (data.googleBusinessLink) setGoogleLink(data.googleBusinessLink);
             if (data.logo) setLogo(data.logo);
             if (data.images && data.images.length > 0) setImages(data.images);
+            if (data.accessibility && data.accessibility.length > 0) setAccessibility(data.accessibility);
+            if (data.offerings && data.offerings.length > 0) setOfferings(data.offerings);
+            if (data.amenities && data.amenities.length > 0) setAmenities(data.amenities);
+            if (data.payments && data.payments.length > 0) setPayments(data.payments);
             alert("Auto-fill complete!");
         } catch (e) {
             console.error(e);

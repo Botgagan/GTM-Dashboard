@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshCw, Calendar as CalendarIcon, MapPin } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const API_BASE = 'http://localhost:3000/api';
@@ -33,7 +33,7 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
                 ...originalPayload,
                 eventTitle: title,
                 finalLocation: location,
-                fullStartTimestamp: `${date}T${startTime}:00${timezoneOffset}`,
+                fullStartTimestamp: `${date}T${startTime.split(':').slice(0,2).join(':')}:00.000${timezoneOffset}`,
                 contactInfo: {
                     ...(originalPayload.contactInfo || {}),
                     city: city
@@ -73,22 +73,14 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
 
     return (
         <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onClose()}>
-            <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-0 bg-transparent shadow-none" >
-                <div className="bg-white rounded-lg flex flex-col w-full h-full border">
-                <DialogHeader className="p-6 pb-4 border-b sticky top-0 bg-white z-10 flex flex-row items-center justify-between rounded-t-lg">
+            <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col p-0 overflow-hidden bg-slate-50/50">
+                <DialogHeader className="px-6 py-4 border-b bg-white flex-shrink-0">
                     <DialogTitle className="text-xl font-semibold flex items-center gap-2">
                         <CalendarIcon className="w-5 h-5 text-indigo-600"/> Edit Event Details
                     </DialogTitle>
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={onClose} className="h-8">Cancel</Button>
-                        <Button onClick={handleSave} disabled={isSaving} className="h-8">
-                            {isSaving ? <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> : null}
-                            Save Event
-                        </Button>
-                    </div>
-                </DialogHeader>
+                    </DialogHeader>
                 
-                <div className="p-6 space-y-8 bg-slate-50/50 rounded-b-lg">
+                <div className="p-6 space-y-8 bg-slate-50/50 overflow-y-auto flex-1">
                     {/* Basic Info */}
                     <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
                         <h3 className="font-semibold text-sm mb-4">Event Basics</h3>
@@ -166,7 +158,13 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
                         </div>
                     </div>
                 </div>
-                </div>
+                <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex-shrink-0">
+                    <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
+                    <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                        {isSaving ? <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> : null}
+                        Save Event
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

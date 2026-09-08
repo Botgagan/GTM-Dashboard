@@ -150,6 +150,10 @@ Fields to extract:
 - email: A primary contact email (look carefully in website text or snippets)
 - logo: A URL to the organization's logo (if you can find one in the images array or website, otherwise null)
 - images: An array of URLs to high-quality images representing the place (up to 3, if available)
+- accessibility: An array of strings describing accessibility features (e.g. "Wheelchair accessible entrance")
+- offerings: An array of strings describing offerings (e.g. "Food", "Drinks")
+- payments: An array of strings describing payment options (e.g. "Cash only", "Credit cards")
+- amenities: An array of strings describing amenities (e.g. "Restroom", "Wi-Fi")
 
 CONTEXT:
 ${snippets}

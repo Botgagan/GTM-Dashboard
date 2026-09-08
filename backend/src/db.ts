@@ -70,8 +70,14 @@ export async function updateOrganizationStatus(id: string, status: string, owner
 
 export async function updateOrganization(id: string, data: any) {
     const fields = ['name', 'community_name', 'created_for', 'owner', 'members_count', 'org_name', 'city', 'address', 'website', 'status', 'hind_status', 'admin_invite_link', 'rich_data'];
-    const setClauses = fields.map((f, i) => `${f} = ${i + 2}`).join(', ');
-    const values = fields.map(f => data[f]);
+    const setClauses = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
+    const values = fields.map(f => {
+        // Automatically stringify objects for JSONB columns like rich_data
+        if (f === 'rich_data' && typeof data[f] === 'object' && data[f] !== null) {
+            return JSON.stringify(data[f]);
+        }
+        return data[f];
+    });
     await pool.query(`UPDATE organizations SET ${setClauses} WHERE id = $1`, [id, ...values]);
 }
 
