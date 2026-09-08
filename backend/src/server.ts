@@ -62,11 +62,11 @@ app.put('/api/contacts/:id/toggle', async (req, res) => {
     }
 });
 
-app.post('/api/org/:id/send-instantly', async (req, res) => {
+app.post('/api/org/:id/send-lemlist', async (req, res) => {
     try {
         const orgId = req.params.id;
         const { getDashboardData, getOrgContacts, getOrgEvents, markOrgAsContacted } = await import('./db');
-        const { pushLeadToInstantly } = await import('./instantlyClient');
+        const { pushLeadToLemlist } = await import('./lemlistClient');
         
         // Fetch org data
         const orgs = await getDashboardData();
@@ -84,16 +84,8 @@ app.post('/api/org/:id/send-instantly', async (req, res) => {
         // Fetch latest event
         const events = await getOrgEvents(orgId);
         const latestEvent = events[0] || {};
-
-        // Format for Instantly
-        const contactInfo = {
-            emails: contactsToSend.map((c: any) => c.email).filter(Boolean),
-            phones: contactsToSend.map((c: any) => c.phone).filter(Boolean)
-        };
-
-        // If a placeholder was saved, ensure we still push it (or skip it based on rules)
         
-        await pushLeadToInstantly(
+        await pushLeadToLemlist(
             contactsToSend, 
             org, 
             latestEvent.title || "Unknown Event", 
@@ -101,7 +93,7 @@ app.post('/api/org/:id/send-instantly', async (req, res) => {
         );
 
         await markOrgAsContacted(orgId);
-        res.json({ success: true, message: `Sent ${contactInfo.emails.length} emails to Instantly!` });
+        res.json({ success: true, message: `Sent to Lemlist!` });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

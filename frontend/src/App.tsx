@@ -1,3 +1,7 @@
+import { Switch } from "@/components/ui/switch"
+import { SearchOrgCombobox } from "./components/SearchOrgCombobox";
+import { format } from "date-fns";
+import { type DateRange } from "react-day-picker";
 import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { X } from "lucide-react";
@@ -240,7 +244,7 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
                   ) : (
                     <Send className="w-3 h-3 mr-1.5" />
                   )}
-                  {org.last_contacted_at ? 'Sent' : 'Instantly'}
+                  {org.last_contacted_at ? 'Sent' : 'Lemlist'}
                 </Button>
               )}
             </div>
@@ -267,46 +271,70 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
 function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrapes: any[], orgs: any[], onRefresh: () => void }) {
   const [expandedPending, setExpandedPending] = useState<{ id: string, type: 'org' | 'contacts' } | null>(null);
   const [open, setOpen] = React.useState(false);
-  const [date, setDate] = React.useState<Date | undefined>(undefined);
+  const [date, setDate] = React.useState<DateRange | undefined>(undefined);
 
   const activeScrape = expandedPending ? pendingScrapes.find(s => s.id === expandedPending.id) : null;
   
   const filteredScrapes = pendingScrapes.filter(scrape => {
-      if (!date) return true;
-      let payload: any = {};
-      try {
-        payload = typeof scrape.payload === 'string' ? JSON.parse(scrape.payload) : scrape.payload;
-      } catch (e) {
-        return false;
+      if (!date?.from && !date?.to) return true;
+      
+      const scrapeDate = new Date(scrape.created_at);
+      if (isNaN(scrapeDate.getTime())) return true;
+      
+      const scrapeDay = new Date(scrapeDate.getFullYear(), scrapeDate.getMonth(), scrapeDate.getDate());
+      
+      if (date.from && date.to) {
+          const fromDay = new Date(date.from.getFullYear(), date.from.getMonth(), date.from.getDate());
+          const toDay = new Date(date.to.getFullYear(), date.to.getMonth(), date.to.getDate());
+          return scrapeDay >= fromDay && scrapeDay <= toDay;
+      } else if (date.from) {
+          const fromDay = new Date(date.from.getFullYear(), date.from.getMonth(), date.from.getDate());
+          return scrapeDay >= fromDay;
+      } else if (date.to) {
+          const toDay = new Date(date.to.getFullYear(), date.to.getMonth(), date.to.getDate());
+          return scrapeDay <= toDay;
       }
-      const ev = payload?.mappedEventData || {};
-      if (!ev.date) return false;
-      let evDate = new Date(ev.date);
-      if (isNaN(evDate.getTime()) && ev.date.includes('/')) {
-          const parts = ev.date.split('/');
-          if (parts.length === 3) {
-              evDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-              if (isNaN(evDate.getTime())) evDate = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
-          }
-      }
-      if (!isNaN(evDate.getTime())) {
-          return evDate.getFullYear() === date.getFullYear() && evDate.getMonth() === date.getMonth() && evDate.getDate() === date.getDate();
-      }
-      return false;
+      return true;
   });
 
   return (
     <div className="flex flex-col w-full">
       <div className="flex justify-end items-center gap-2 p-3 border-b">
-        {date && (
+        {(date?.from || date?.to) && (
           <Button variant="ghost" size="sm" onClick={() => setDate(undefined)} className="h-9 px-2 text-slate-500 hover:text-slate-700">
             <X className="w-4 h-4 mr-1" /> Clear Filter
           </Button>
         )}
         <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger render={<Button variant="outline" id="date" className="justify-start font-normal">{date ? date.toLocaleDateString() : "Select date"}</Button>} />
-          <PopoverContent className="w-auto overflow-hidden p-0" align="start">
-            <CalendarUI mode="single" selected={date} month={date} onSelect={(d: any) => { setDate(d); setOpen(false); }} />
+          <PopoverTrigger render={<Button
+              variant="outline"
+              className={cn(
+                "w-[260px] justify-start text-left font-normal text-xs h-9",
+                !date && "text-muted-foreground"
+              )}
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              {date?.from ? (
+                date.to ? (
+                  <>
+                    {format(date.from, "LLL dd, y")} -{" "}
+                    {format(date.to, "LLL dd, y")}
+                  </>
+                ) : (
+                  format(date.from, "LLL dd, y")
+                )
+              ) : (
+                <span>Filter by Discovered At</span>
+              )}
+            </Button>} />
+          <PopoverContent className="w-auto p-0" align="end">
+            <CalendarUI
+              mode="range"
+              defaultMonth={date?.from}
+              selected={date}
+              onSelect={setDate}
+              numberOfMonths={2}
+            />
           </PopoverContent>
         </Popover>
       </div>
@@ -314,6 +342,7 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
         <TableHeader>
           <TableRow>
             <TableHead>Event Title</TableHead>
+            <TableHead>Discovered At</TableHead>
             <TableHead>New/Existing Org</TableHead>
             <TableHead>Start Date</TableHead>
             <TableHead>Start Time</TableHead>
@@ -328,7 +357,7 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
         <TableBody>
           {filteredScrapes.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                 No pending scraped events.
               </TableCell>
             </TableRow>
@@ -410,6 +439,9 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
         </div>
         {isEditingEvent && <EditableEventForm scrape={scrape} onRefresh={onRefresh} onClose={() => setIsEditingEvent(false)} />}
       </TableCell>
+      <TableCell className="whitespace-nowrap text-[11px] text-slate-600">
+        {new Date(scrape.created_at).toLocaleString()}
+      </TableCell>
       <TableCell>
         {isLinked ? (
           <Badge variant="default" className="bg-green-600 hover:bg-green-700 max-w-[120px] truncate" title={`Existing Org: ${linkedOrgName}`}>
@@ -443,18 +475,20 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
           <LinkIcon className="w-3 h-3" /> Link
         </a>
       </TableCell>
-      <TableCell>
-        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={onViewOrg}>
-          View
-        </Button>
+      <TableCell className="whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={onViewOrg}>
+            View
+          </Button>
+          {!isResolved && (
+            <SearchOrgCombobox orgs={orgs} onLinkOrg={handleLinkOrg} />
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-right align-middle relative">
         <div className="flex items-center justify-end gap-2">
           {!isResolved ? (
             <>
-              <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setIsLinking(!isLinking)} title="Search and Link to Existing Organization">
-                <Search className="w-4 h-4 text-slate-600" />
-              </Button>
               <Button size="sm" variant="default" onClick={handleApprove} disabled={isApproving}>
                 {isApproving ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
                 Approve
@@ -466,46 +500,7 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
           )}
         </div>
 
-        {isLinking && !isResolved && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setIsLinking(false)} />
-            <div className="absolute right-0 top-12 w-[300px] z-50 bg-white border shadow-lg rounded-md p-2 text-left">
-              <div className="flex items-center gap-2 mb-2">
-                <Search className="w-4 h-4 text-slate-400" />
-                <Input 
-                  placeholder="Search existing orgs..." 
-                  className="h-8 text-xs"
-                  autoFocus
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <div className="max-h-[200px] overflow-y-auto flex flex-col gap-1">
-                {orgs
-                  .filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .slice(0, 10)
-                  .map(o => (
-                    <div 
-                      key={o.id}
-                      className="text-left text-xs p-2 hover:bg-slate-100 rounded cursor-pointer"
-                      onClick={() => handleLinkOrg(o.id)}
-                    >
-                      <div className="font-semibold">{o.name}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">{o.city || 'No location'}</div>
-                    </div>
-                  ))
-                }
-                {orgs.filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <div className="text-xs text-muted-foreground p-2">No organizations found.</div>
-                )}
-              </div>
-              <div className="border-t pt-2 mt-1">
-                <Button variant="ghost" size="sm" className="w-full text-xs h-7 text-red-600" onClick={() => handleLinkOrg(null)}>Unlink (New Org)</Button>
-                <Button variant="outline" size="sm" className="w-full text-xs h-7 mt-1" onClick={() => setIsLinking(false)}>Cancel</Button>
-              </div>
-            </div>
-          </>
-        )}
+        
       </TableCell>
     </TableRow>
   );
@@ -581,18 +576,22 @@ function ScrapedUrlsPanel({ setUrlsCount, urlProcessingUI }: { setUrlsCount: (n:
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1 rounded-lg">
-            <button
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${sourceTab === 'cron-job' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+            <Button
+              variant={sourceTab === 'cron-job' ? 'default' : 'ghost'}
+              size="sm"
               onClick={() => setSourceTab('cron-job')}
+              className="rounded-md"
             >
               Cron-Job Scraping
-            </button>
-            <button
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${sourceTab === 'manual' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+            </Button>
+            <Button
+              variant={sourceTab === 'manual' ? 'default' : 'ghost'}
+              size="sm"
               onClick={() => setSourceTab('manual')}
+              className="rounded-md"
             >
               Manual Scraping
-            </button>
+            </Button>
           </div>
           {sourceTab === 'cron-job' && (
           <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
@@ -730,7 +729,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'pending' | 'claimed' | 'unclaimed' | 'failed' | 'urls'>('pending');
   const [expandedOrg, setExpandedOrg] = useState<{ id: string; type: 'contacts' | 'events' } | null>(null);
   const [urlsCount, setUrlsCount] = useState(0);
-  const [orgDetails, setOrgDetails] = useState<{ contacts: Contact[]; events: Event[] }>({ contacts: [], events: [] });
+  const [orgDetails, setOrgDetails] = useState<{ contacts: Contact[]; events: OrgEvent[] }>({ contacts: [], events: [] });
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [sendingToInstantly, setSendingToInstantly] = useState<string | null>(null);
   const [linkingManualOrg, setLinkingManualOrg] = useState<string | null>(null);
@@ -900,7 +899,7 @@ export default function App() {
   const handleSendToInstantly = async (orgId: string) => {
     setSendingToInstantly(orgId);
     try {
-      const res = await fetch(`${API_BASE}/org/${orgId}/send-instantly`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/org/${orgId}/send-lemlist`, { method: 'POST' });
       const data = await res.json();
       
       if (res.ok) {
@@ -1021,19 +1020,19 @@ export default function App() {
           <div className="flex gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input 
+              <Input 
                 type="text" 
                 placeholder="Paste event url from allevents,meraevents, eventbrite etc"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={isProcessing}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border-slate-200 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50"
+                className="w-full pl-10 h-14 bg-slate-50 rounded-xl"
               />
             </div>
-            <button 
+            <Button
               onClick={handleProcess}
               disabled={isProcessing || !url}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              className="flex items-center gap-2 px-6 py-6 rounded-xl whitespace-nowrap text-md"
             >
               {isProcessing ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -1041,7 +1040,7 @@ export default function App() {
                 <Play className="w-5 h-5" />
               )}
               {isProcessing ? 'Processing...' : 'Scrap'}
-            </button>
+            </Button>
           </div>
 
           {/* Logs View */}
@@ -1185,7 +1184,8 @@ export default function App() {
 
 function TabButton({ active, onClick, icon, children, count }: any) {
   return (
-    <button
+    <Button
+      variant={active ? "default" : "ghost"}
       onClick={onClick}
       className={cn(
         "flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all",
@@ -1202,7 +1202,7 @@ function TabButton({ active, onClick, icon, children, count }: any) {
       )}>
         {count}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -1352,15 +1352,11 @@ function EditableContactRow({ contact, onToggle, orgId, onRefresh }: any) {
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-4">
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer" 
-              checked={contact.send_enabled} 
-              onChange={(e) => onToggle(contact.id, e.target.checked)} 
-            />
-            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-          </label>
+          <Switch 
+            checked={contact.send_enabled} 
+            onCheckedChange={(checked) => onToggle(contact.id, checked)} 
+            aria-label="Toggle send status"
+          />
           <DropdownMenu>
             {/* @ts-ignore */}
             <DropdownMenuTrigger asChild>
@@ -1588,7 +1584,7 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
   );
 }
 
-function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: Event[], orgId: string, onSendEvent?: (eventId: string) => void, onRefresh: () => void }) {
+function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: OrgEvent[], orgId: string, onSendEvent?: (eventId: string) => void, onRefresh: () => void }) {
   const [localEvents, setLocalEvents] = useState(events);
 
   useEffect(() => {

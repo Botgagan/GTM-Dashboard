@@ -1,7 +1,6 @@
 import { scrapeAllEvents } from "./apifyScraper";
 import { mapEventWithLLM } from "./llmMapper";
 import { findEmailViaGoogleSearch } from "./emailFinder";
-import { pushLeadToInstantly } from "./instantlyClient";
 import { submitEventToCohortApi, createSubcommunity, getAdminInviteLink, getEventDetails, getSubcommunityDetails } from "./apiClient";
 import { createPipelineRun, completePipelineRun, upsertOrganization, insertContact, insertEvent } from "./db";
 
