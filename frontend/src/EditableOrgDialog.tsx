@@ -1,3 +1,4 @@
+import { toast } from "@/components/ui/toast";
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ export function EditableOrgDialog({ org, onClose, onRefresh }: { org: any, onClo
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editData)
         });
       }
+      toast.add({ type: "success", description: org ? "Organization updated successfully." : "Organization created successfully." });
       onRefresh();
       onClose();
     } catch (e) {

@@ -230,6 +230,7 @@ export async function submitEventToCohortApi(payload: HindEventPayload, orgId: s
             throw error;
         }
     }
+    return null;
 }
 
 export async function createSubcommunity(organizerName: string, phoneStr: string, emailStr: string): Promise<string | null> {
@@ -293,6 +294,7 @@ export async function createSubcommunity(organizerName: string, phoneStr: string
         }
     } catch (error: any) {
         console.error(`❌ Failed to create subcommunity:`, JSON.stringify(error?.response?.data || error.message, null, 2));
+        throw new Error(error?.response?.data?.message || error?.message || "Failed to create subcommunity in Cohort API");
     }
     return null;
 }
@@ -371,3 +373,5 @@ export async function getSubcommunityDetails(orgId: string): Promise<any | null>
     }
     return null;
 }
+
+

@@ -1,3 +1,5 @@
+import { Toaster, toast } from "@/components/ui/toast";
+import { AdvancedFilterSheet } from "@/components/AdvancedFilterSheet";
 import { Switch } from "@/components/ui/switch"
 import { SearchOrgCombobox } from "./components/SearchOrgCombobox";
 import { format } from "date-fns";
@@ -270,73 +272,107 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
 
 function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrapes: any[], orgs: any[], onRefresh: () => void }) {
   const [expandedPending, setExpandedPending] = useState<{ id: string, type: 'org' | 'contacts' } | null>(null);
-  const [open, setOpen] = React.useState(false);
-  const [date, setDate] = React.useState<DateRange | undefined>(undefined);
+  
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
+  const [toDate, setToDate] = useState<Date | undefined>(undefined);
+  const [tempFromDate, setTempFromDate] = useState<Date | undefined>(undefined);
+  const [tempToDate, setTempToDate] = useState<Date | undefined>(undefined);
+
+  useEffect(() => {
+     if (filterOpen) {
+        setTempFromDate(fromDate);
+        setTempToDate(toDate);
+     }
+  }, [filterOpen, fromDate, toDate]);
+
+  const applyFilters = () => {
+      setFromDate(tempFromDate);
+      setToDate(tempToDate);
+  };
+
+  const clearFilters = () => {
+      setFromDate(undefined);
+      setToDate(undefined);
+      setTempFromDate(undefined);
+      setTempToDate(undefined);
+  };
 
   const activeScrape = expandedPending ? pendingScrapes.find(s => s.id === expandedPending.id) : null;
   
   const filteredScrapes = pendingScrapes.filter(scrape => {
-      if (!date?.from && !date?.to) return true;
+      if (!fromDate && !toDate) return true;
       
       const scrapeDate = new Date(scrape.created_at);
       if (isNaN(scrapeDate.getTime())) return true;
       
       const scrapeDay = new Date(scrapeDate.getFullYear(), scrapeDate.getMonth(), scrapeDate.getDate());
       
-      if (date.from && date.to) {
-          const fromDay = new Date(date.from.getFullYear(), date.from.getMonth(), date.from.getDate());
-          const toDay = new Date(date.to.getFullYear(), date.to.getMonth(), date.to.getDate());
-          return scrapeDay >= fromDay && scrapeDay <= toDay;
-      } else if (date.from) {
-          const fromDay = new Date(date.from.getFullYear(), date.from.getMonth(), date.from.getDate());
-          return scrapeDay >= fromDay;
-      } else if (date.to) {
-          const toDay = new Date(date.to.getFullYear(), date.to.getMonth(), date.to.getDate());
-          return scrapeDay <= toDay;
+      if (fromDate && toDate) {
+          const fDay = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+          const tDay = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+          return scrapeDay >= fDay && scrapeDay <= tDay;
+      } else if (fromDate) {
+          const fDay = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+          return scrapeDay >= fDay;
+      } else if (toDate) {
+          const tDay = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+          return scrapeDay <= tDay;
       }
       return true;
   });
 
   return (
     <div className="flex flex-col w-full">
-      <div className="flex justify-end items-center gap-2 p-3 border-b">
-        {(date?.from || date?.to) && (
-          <Button variant="ghost" size="sm" onClick={() => setDate(undefined)} className="h-9 px-2 text-slate-500 hover:text-slate-700">
-            <X className="w-4 h-4 mr-1" /> Clear Filter
-          </Button>
-        )}
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger render={<Button
-              variant="outline"
-              className={cn(
-                "w-[260px] justify-start text-left font-normal text-xs h-9",
-                !date && "text-muted-foreground"
-              )}
+      <div className="flex justify-between items-center p-3 border-b bg-slate-50/50">
+        <div className="text-sm text-slate-500 font-medium px-2">
+            {filteredScrapes.length} Event{filteredScrapes.length !== 1 ? 's' : ''} Found
+        </div>
+        <div className="flex items-center gap-2">
+            {(fromDate || toDate) && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 px-2 text-slate-500 hover:text-slate-700">
+                <X className="w-4 h-4 mr-1" /> Clear Active Filters
+            </Button>
+            )}
+            
+            <AdvancedFilterSheet
+                title="Filter Events"
+                description="Use the filters below to narrow down scraped events. Click Apply when done."
+                triggerText="Filter Events"
+                open={filterOpen}
+                onOpenChange={setFilterOpen}
+                onApply={applyFilters}
+                onClear={clearFilters}
             >
-              <Calendar className="mr-2 h-4 w-4" />
-              {date?.from ? (
-                date.to ? (
-                  <>
-                    {format(date.from, "LLL dd, y")} -{" "}
-                    {format(date.to, "LLL dd, y")}
-                  </>
-                ) : (
-                  format(date.from, "LLL dd, y")
-                )
-              ) : (
-                <span>Filter by Discovered At</span>
-              )}
-            </Button>} />
-          <PopoverContent className="w-auto p-0" align="end">
-            <CalendarUI
-              mode="range"
-              defaultMonth={date?.from}
-              selected={date}
-              onSelect={setDate}
-              numberOfMonths={2}
-            />
-          </PopoverContent>
-        </Popover>
+                <div className="space-y-4">
+                    <div className="space-y-2 flex flex-col">
+                        <label className="text-sm font-medium leading-none">Discovered On or After (From)</label>
+                        <Popover>
+                            <PopoverTrigger render={<Button variant="outline" className={cn("w-full justify-start text-left font-normal", !tempFromDate && "text-muted-foreground")}>
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {tempFromDate ? format(tempFromDate, "PPP") : <span>Pick a date</span>}
+                            </Button>} />
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarUI mode="single" selected={tempFromDate} onSelect={setTempFromDate} />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+
+                    <div className="space-y-2 flex flex-col">
+                        <label className="text-sm font-medium leading-none">Discovered On or Before (To)</label>
+                        <Popover>
+                            <PopoverTrigger render={<Button variant="outline" className={cn("w-full justify-start text-left font-normal", !tempToDate && "text-muted-foreground")}>
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {tempToDate ? format(tempToDate, "PPP") : <span>Pick a date</span>}
+                            </Button>} />
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarUI mode="single" selected={tempToDate} onSelect={setTempToDate} />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                </div>
+            </AdvancedFilterSheet>
+        </div>
       </div>
       <Table>
         <TableHeader>
@@ -395,7 +431,14 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
       });
       setIsLinking(false);
       onRefresh();
-    } catch(e) { console.error(e); }
+      if (orgId) {
+        toast.add({ type: "success", description: "Successfully linked!" });
+      } else {
+        toast.add({ description: "Successfully unlinked!" });
+      }
+    } catch(e: any) { 
+        toast.add({ type: "error", description: "Failed to link: " + e.message, priority: "high" });
+    }
   };
 
   const handleApprove = async () => {
@@ -403,13 +446,14 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
     try {
       const res = await fetch(`${API_BASE}/pending-scrapes/${scrape.id}/approve`, { method: 'POST' });
       if (res.ok) {
+        toast.add({ type: "success", description: "Successfully approved!" });
         onRefresh();
       } else {
         const err = await res.json();
-        alert(`Approval failed: ${err.error}`);
+        toast.add({ type: "error", description: `Approval failed: ${err.error}`, priority: "high" });
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.add({ type: "error", description: e.message, priority: "high" });
     } finally {
       setIsApproving(false);
     }
@@ -418,7 +462,7 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
   const handleReject = async () => {
     try {
       const res = await fetch(`${API_BASE}/pending-scrapes/${scrape.id}/reject`, { method: 'POST' });
-      if (res.ok) onRefresh();
+      if (res.ok) { toast.add({ description: "Event rejected." }); onRefresh(); }
     } catch (e) {
       console.error(e);
     }
@@ -546,6 +590,7 @@ function ScrapedUrlsPanel({ setUrlsCount, urlProcessingUI }: { setUrlsCount: (n:
         body: JSON.stringify({ is_active: !currentStatus })
       });
       fetchPlatforms();
+      toast.add({ description: "Platform toggled." });
     } catch (e) {
       console.error("Failed to toggle platform", e);
     }
@@ -566,6 +611,7 @@ function ScrapedUrlsPanel({ setUrlsCount, urlProcessingUI }: { setUrlsCount: (n:
       });
       fetchPlatforms();
       form.reset();
+      toast.add({ type: "success", description: "Platform added." });
     } catch (e) {
       console.error("Failed to add platform", e);
     }
@@ -755,13 +801,13 @@ export default function App() {
       const data = await res.json();
       
       if (res.ok) {
-        alert("Success! The manual organization was linked, the event was pushed, and the record has been moved to Unclaimed Communities.");
+        toast.add({ type: "success", description: "Success! Manual organization linked and event pushed to Unclaimed Communities." });
         fetchDashboardData();
       } else {
-        alert(`Failed: ${data.error}`);
+        toast.add({ type: "error", description: `Failed: ${data.error}`, priority: "high" });
       }
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      toast.add({ type: "error", description: `Error: ${e.message}`, priority: "high" });
     } finally {
       setLinkingManualOrg(null);
     }
@@ -903,13 +949,13 @@ export default function App() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message);
+        toast.add({ type: "success", description: data.message });
         fetchDashboardData(); // Refresh to show last_contacted_at
       } else {
-        alert(`Error: ${data.error}`);
+        toast.add({ type: "error", description: `Error: ${data.error}`, priority: "high" });
       }
     } catch (err: any) {
-      alert(`Request failed: ${err.message}`);
+      toast.add({ type: "error", description: `Request failed: ${err.message}`, priority: "high" });
     } finally {
       setSendingToInstantly(null);
     }
@@ -923,13 +969,13 @@ export default function App() {
       const res = await fetch(`${API_BASE}/sync-all`, { method: 'POST' });
       if (res.ok) {
         await fetchDashboardData();
-        alert('Successfully synced all organizations and events from Cohort!');
+        toast.add({ type: "success", description: "Successfully synced all organizations and events from Cohort!" });
       } else {
         const error = await res.json();
-        alert(`Failed to sync: ${error.error}`);
+        toast.add({ type: "error", description: `Failed to sync: ${error.error}`, priority: "high" });
       }
     } catch (e: any) {
-      alert(`Sync failed: ${e.message}`);
+      toast.add({ type: "error", description: `Sync failed: ${e.message}`, priority: "high" });
     } finally {
       setIsSyncing(false);
     }
@@ -1178,6 +1224,7 @@ export default function App() {
           </div>
         </DialogContent>
       </Dialog>
+      <Toaster />
     </div>
   );
 }
@@ -1228,7 +1275,7 @@ function EditableContactRow({ contact, onToggle, orgId, onRefresh }: any) {
       onRefresh();
     } catch (e) {
       console.error(e);
-      alert('Failed to save contact');
+      toast.add({ type: "error", description: "Failed to save contact", priority: "high" });
     } finally {
       setIsSaving(false);
     }
@@ -1453,7 +1500,7 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
       onRefresh();
     } catch (e) {
       console.error(e);
-      alert('Failed to save event');
+      toast.add({ type: "error", description: "Failed to save event", priority: "high" });
     } finally {
       setIsSaving(false);
     }
@@ -1638,3 +1685,7 @@ function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: OrgEve
     </div>
   );
 }
+
+
+
+

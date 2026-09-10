@@ -6,6 +6,63 @@ dotenv.config();
 const LEMLIST_API_KEY = process.env.LEMLIST_API_KEY;
 const LEMLIST_MASTER_CAMPAIGN_ID = process.env.LEMLIST_MASTER_CAMPAIGN_ID;
 
+// Cache of city campaigns to avoid constantly fetching from API
+let campaignCache: { [cityName: string]: string } = {};
+let hasFetchedCampaigns = false;
+
+async function getOrCreateCityCampaign(cityName: string): Promise<string> {
+    if (!LEMLIST_API_KEY || !LEMLIST_MASTER_CAMPAIGN_ID) return LEMLIST_MASTER_CAMPAIGN_ID || "";
+    
+    const targetName = `${cityName} Organizers`;
+
+    // 1. Check local cache
+    if (campaignCache[targetName]) {
+        return campaignCache[targetName];
+    }
+
+    // 2. Fetch all campaigns if we haven't yet, to populate cache
+    if (!hasFetchedCampaigns) {
+        try {
+            const res = await axios.get('https://api.lemlist.com/api/campaigns', {
+                auth: { username: '', password: LEMLIST_API_KEY }
+            });
+            for (const camp of res.data) {
+                if (camp.name) {
+                    campaignCache[camp.name] = camp._id;
+                }
+            }
+            hasFetchedCampaigns = true;
+        } catch (e) {
+            console.error("Failed to fetch Lemlist campaigns:", e);
+        }
+    }
+
+    // 3. Check cache again after fetching
+    if (campaignCache[targetName]) {
+        return campaignCache[targetName];
+    }
+
+    // 4. If it doesn't exist, duplicate the master campaign
+    console.log(`\n[LEMLIST] Campaign '${targetName}' not found. Auto-creating by duplicating Master...`);
+    try {
+        const res = await axios.post(
+            `https://api.lemlist.com/api/campaigns/${LEMLIST_MASTER_CAMPAIGN_ID}/duplicate`,
+            { name: targetName },
+            { auth: { username: '', password: LEMLIST_API_KEY } }
+        );
+        const newCampaignId = res.data._id;
+        console.log(`[LEMLIST] Successfully created city campaign: ${targetName} (${newCampaignId})`);
+        
+        // Save to cache
+        campaignCache[targetName] = newCampaignId;
+        return newCampaignId;
+    } catch (e: any) {
+        console.error(`[LEMLIST ERROR] Failed to duplicate campaign for ${cityName}:`, e.response?.data || e.message);
+        // Fallback to master campaign if duplication fails
+        return LEMLIST_MASTER_CAMPAIGN_ID;
+    }
+}
+
 export async function pushLeadToLemlist(
     contacts: any[],
     organization: any,
@@ -17,10 +74,11 @@ export async function pushLeadToLemlist(
         return;
     }
 
-    // Since Lemlist automatically skips missing steps (e.g. skips email step if no email, 
-    // skips whatsapp step if no phone), we can safely push ALL contacts!
+    // Determine the campaign ID based on the city
+    const cityName = organization.city && organization.city.trim() !== "" ? organization.city.trim() : "Online";
+    const targetCampaignId = await getOrCreateCityCampaign(cityName);
+
     for (const contact of contacts) {
-        // Only push if they have at least an email or a phone
         if (!contact.email && !contact.phone) continue;
 
         let firstName = "";
@@ -36,25 +94,23 @@ export async function pushLeadToLemlist(
             lastName: lastName,
             companyName: organization.name,
             organizer_name: organization.name,
-            location: organization.city || "Online",
+            location: cityName,
             event_title: eventTitle,
             event_url: eventUrl,
-            admin_invite_link: organization.admin_invite_link || ""
+            admin_invite_link: organization.admin_invite_link || "",
+            org_website: organization.website || ""
         };
 
         if (contact.email) payload.email = contact.email;
         if (contact.phone) payload.phone = contact.phone;
 
         try {
-            console.log(`\n-> Pushing Contact (${contact.email || contact.phone}) to Lemlist Campaign...`);
+            console.log(`\n-> Pushing Contact (${contact.email || contact.phone}) to Lemlist Campaign (${targetCampaignId})...`);
             const response = await axios.post(
-                `https://api.lemlist.com/api/campaigns/${LEMLIST_MASTER_CAMPAIGN_ID}/leads`,
+                `https://api.lemlist.com/api/campaigns/${targetCampaignId}/leads`,
                 payload,
                 {
-                    auth: {
-                        username: '',
-                        password: LEMLIST_API_KEY
-                    }
+                    auth: { username: '', password: LEMLIST_API_KEY }
                 }
             );
             console.log(`Success! Lead pushed to Lemlist.`);
