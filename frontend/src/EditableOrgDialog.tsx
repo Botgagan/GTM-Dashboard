@@ -48,14 +48,14 @@ export function EditableOrgDialog({ org, onClose, onRefresh }: { org: any, onClo
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col p-0 overflow-hidden bg-slate-50/50">
-        <DialogHeader className="px-6 py-4 border-b bg-white flex-shrink-0">
+      <DialogContent className="sm:max-w-[700px] bg-white">
+        <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2 text-slate-800">
             <Building2 className="w-5 h-5 text-indigo-600" /> Edit Organization Profile
           </DialogTitle>
         </DialogHeader>
 
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="-mx-4 no-scrollbar max-h-[50vh] overflow-y-auto px-4 space-y-6">
           <div className="grid grid-cols-2 gap-4 bg-white p-4 rounded-xl border shadow-sm">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Subcommunity Name</Label>
@@ -120,13 +120,17 @@ export function EditableOrgDialog({ org, onClose, onRefresh }: { org: any, onClo
               <Input value={editData.rich_data?.youtube || ''} onChange={e => updateRichData('youtube', e.target.value)} placeholder="YouTube Link..." />
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">LinkedIn</Label>
+              <Input value={editData.rich_data?.linkedin || ''} onChange={e => updateRichData('linkedin', e.target.value)} placeholder="LinkedIn Link..." />
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Admin Invite Link</Label>
               <Input value={editData.admin_invite_link || ''} onChange={e => setEditData({...editData, admin_invite_link: e.target.value})} placeholder="https://dev.cohort..." />
             </div>
           </div>
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex-shrink-0">
+        <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
           <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
             {isSaving ? 'Saving...' : 'Save Organization'}
@@ -136,3 +140,4 @@ export function EditableOrgDialog({ org, onClose, onRefresh }: { org: any, onClo
     </Dialog>
   );
 }
+

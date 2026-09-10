@@ -232,12 +232,10 @@ export async function approvePendingScrape(pendingId: string) {
     // The Cohort API requires a configured vendor for paid events. If we try to push a paid event,
     // it will fail with a 422 Vendor not configured error. To save time and avoid bad states, 
     // we auto-reject it here.
-    if (parseFloat(mappedEventData.price || "0") > 0 || mappedEventData.isPaid === "true") {
+    if (parseFloat(String(mappedEventData.price || "0").replace(/[^0-9.]/g, '')) > 0 || (mappedEventData.isPaid === "true" || mappedEventData.isPaid === true)) {
         console.log(`❌ Auto-rejecting scrape for: ${eventTitle}`);
         console.log(`Reason: Vendor not configured for this entity. Cannot create paid event.`);
-        const { updatePendingScrapeStatus } = await import('./db');
-        await updatePendingScrapeStatus(pendingId, 'rejected');
-        return; // Return normally so the frontend refreshes and sees the 'rejected' status
+        return { priceError: true, reason: 'Vendor not configured for this entity. Cannot create paid event.' };
     }
 
     console.log(`Approving scrape for: ${eventTitle}`);
@@ -312,7 +310,8 @@ export async function approvePendingScrape(pendingId: string) {
             googleBusinessLink: p.googleBusinessLink,
             facebook: contactInfo.facebook,
             instagram: contactInfo.instagram,
-            youtube: contactInfo.youtube
+            youtube: contactInfo.youtube,
+            linkedin: contactInfo.linkedin
         }
     });
 
@@ -371,8 +370,8 @@ export async function approvePendingScrape(pendingId: string) {
         hindStatus: approvalStatus
     });
 
-    // Remove from pending queue -> Now we just update the status to approved!
     const { updatePendingScrapeStatus } = await import('./db');
+    // Remove from pending queue -> Now we just update the status to approved!
     await updatePendingScrapeStatus(pendingId, 'approved');
     console.log(`✅ Approved and pushed to Cohort successfully!`);
 }
@@ -503,4 +502,10 @@ export async function retryManualOrg(localOrgId: string, manualOrgId: string) {
 
     console.log(`??? Manual Organization Link Successful!`);
 }
+
+
+
+
+
+
 

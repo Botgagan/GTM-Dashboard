@@ -224,7 +224,7 @@ export async function submitEventToCohortApi(payload: HindEventPayload, orgId: s
     } catch (error: any) {
         if (error.response) {
             console.error(`❌ Cohort API Error (${error.response.status}):`, error.response.data);
-            throw new Error(JSON.stringify(error.response.data));
+            throw new Error(error.response.data?.message || error.response.data?.error || JSON.stringify(error.response.data));
         } else {
             console.error("❌ Cohort API Request Failed:", error.message);
             throw error;
@@ -373,5 +373,6 @@ export async function getSubcommunityDetails(orgId: string): Promise<any | null>
     }
     return null;
 }
+
 
 

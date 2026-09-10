@@ -80,6 +80,33 @@ type Organization = {
 
 const API_BASE = 'http://localhost:3000/api';
 
+
+function formatEventDateTime(dateStr: string | null | undefined, timeStr: string | null | undefined) {
+  if (!dateStr || dateStr === 'N/A') return { date: 'N/A', time: '' };
+  
+  try {
+    let parseStr = dateStr;
+    if (!dateStr.includes('T') && timeStr) {
+      // Ensure time string is at least HH:MM format for parsing
+      let t = timeStr.trim();
+      if (t.length <= 5 && t.includes(':')) t = t + ':00';
+      parseStr = `${dateStr}T${t}`;
+    } else if (!dateStr.includes('T')) {
+      parseStr = `${dateStr}T00:00:00`;
+    }
+    
+    const d = new Date(parseStr);
+    if (!isNaN(d.getTime())) {
+      return {
+        date: d.toLocaleDateString(),
+        time: (timeStr && timeStr !== 'N/A') || dateStr.includes('T') ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+      };
+    }
+  } catch(e) {}
+  
+  return { date: dateStr, time: timeStr || '' };
+}
+
 function getDomainName(urlStr: string | null): string {
   if (!urlStr) return 'Link';
   try {
@@ -167,6 +194,13 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
           {org.rich_data?.youtube ? (
             <a href={org.rich_data.youtube} target="_blank" rel="noreferrer" className="text-red-600 hover:underline text-[11px] break-all flex items-center gap-1">
                <LinkIcon className="w-3 h-3"/> YT
+            </a>
+          ) : '-'}
+        </TableCell>
+        <TableCell>
+          {org.rich_data?.linkedin ? (
+            <a href={org.rich_data.linkedin} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline text-[11px] break-all flex items-center gap-1">
+               <LinkIcon className="w-3 h-3"/> IN
             </a>
           ) : '-'}
         </TableCell>
@@ -260,8 +294,8 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setIsEditing(true)}><Edit className="w-4 h-4 mr-2"/> Edit</DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDelete} className="text-destructive"><Trash className="w-4 h-4 mr-2"/> Delete</DropdownMenuItem>
-              </DropdownMenuContent>
+              <DropdownMenuItem onClick={handleDelete} className="text-destructive"><Trash className="w-4 h-4 mr-2"/> Delete</DropdownMenuItem>
+            </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </TableCell>
@@ -324,7 +358,7 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
 
   return (
     <div className="flex flex-col w-full">
-      <div className="flex justify-between items-center p-3 border-b bg-slate-50/50">
+      <div className="flex justify-between items-center p-3 border-b bg-white">
         <div className="text-sm text-slate-500 font-medium px-2">
             {filteredScrapes.length} Event{filteredScrapes.length !== 1 ? 's' : ''} Found
         </div>
@@ -380,10 +414,8 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
             <TableHead>Event Title</TableHead>
             <TableHead>Discovered At</TableHead>
             <TableHead>New/Existing Org</TableHead>
-            <TableHead>Start Date</TableHead>
-            <TableHead>Start Time</TableHead>
-            <TableHead>End Date</TableHead>
-            <TableHead>End Time</TableHead>
+            <TableHead>Start Date & Time</TableHead>
+            <TableHead>End Date & Time</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Source URL</TableHead>
             <TableHead>Org Details</TableHead>
@@ -446,8 +478,13 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
     try {
       const res = await fetch(`${API_BASE}/pending-scrapes/${scrape.id}/approve`, { method: 'POST' });
       if (res.ok) {
-        toast.add({ type: "success", description: "Successfully approved!" });
-        onRefresh();
+        const data = await res.json();
+        if (data.priceError) {
+          toast.add({ type: "warning", description: data.reason, priority: "high" });
+        } else {
+          toast.add({ type: "success", description: "Successfully approved!" });
+          onRefresh();
+        }
       } else {
         const err = await res.json();
         toast.add({ type: "error", description: `Approval failed: ${err.error}`, priority: "high" });
@@ -477,14 +514,19 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
       <TableCell className="max-w-[200px] group relative">
         <div className="flex items-center gap-2 pr-6">
           <span className="font-medium text-[11px] truncate cursor-text select-all" title={payload.eventTitle}>{payload.eventTitle || 'N/A'}</span>
-          <Button variant="outline" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2" onClick={() => setIsEditingEvent(true)} title="Edit Event Details">
-            <Edit className="w-3 h-3 text-slate-600" />
-          </Button>
+          {!isResolved && (
+            <Button variant="outline" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2" onClick={() => setIsEditingEvent(true)} title="Edit Event Details">
+              <Edit className="w-3 h-3 text-slate-600" />
+            </Button>
+          )}
         </div>
         {isEditingEvent && <EditableEventForm scrape={scrape} onRefresh={onRefresh} onClose={() => setIsEditingEvent(false)} />}
       </TableCell>
-      <TableCell className="whitespace-nowrap text-[11px] text-slate-600">
-        {new Date(scrape.created_at).toLocaleString()}
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-slate-700 text-[11px]">{new Date(scrape.created_at).toLocaleDateString()}</span>
+          <span className="text-[10px] text-muted-foreground">{new Date(scrape.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
       </TableCell>
       <TableCell>
         {isLinked ? (
@@ -497,10 +539,18 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
           </Badge>
         )}
       </TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.date || 'N/A'}</span></TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.startTime || 'N/A'}</span></TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.endDate || 'N/A'}</span></TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{ev?.endTime || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-slate-700 text-[11px]">{formatEventDateTime(ev?.date, ev?.startTime).date}</span>
+          <span className="text-[10px] text-muted-foreground">{formatEventDateTime(ev?.date, ev?.startTime).time}</span>
+        </div>
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-slate-700 text-[11px]">{formatEventDateTime(ev?.endDate, ev?.endTime).date}</span>
+          <span className="text-[10px] text-muted-foreground">{formatEventDateTime(ev?.endDate, ev?.endTime).time}</span>
+        </div>
+      </TableCell>
       <TableCell className="max-w-[200px] whitespace-normal">
         {(() => {
            const city = ev?.city || payload.contactInfo?.city;
@@ -1007,7 +1057,7 @@ export default function App() {
       <main className="flex-1 p-6 w-full max-w-[1600px] mx-auto space-y-8">
         {/* Dashboard Section */}
         <section className="bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col">
-          <div className="border-b bg-slate-50/50 p-4 flex justify-between items-center">
+          <div className="border-b bg-white p-4 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <TabButton 
                 active={activeTab === 'pending'} 
@@ -1132,6 +1182,7 @@ export default function App() {
                     <TableHead>Facebook</TableHead>
                     <TableHead>Instagram</TableHead>
                     <TableHead>YouTube</TableHead>
+                    <TableHead>LinkedIn</TableHead>
                     <TableHead>Admin Invite Link</TableHead>
                     <TableHead>Contacts</TableHead>
                     <TableHead>Last Contacted</TableHead>
@@ -1255,7 +1306,7 @@ function TabButton({ active, onClick, icon, children, count }: any) {
 
 
 function EditableContactRow({ contact, onToggle, orgId, onRefresh }: any) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(contact?.id?.startsWith('new-') || false);
   const [editData, setEditData] = useState(contact);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -1293,93 +1344,51 @@ function EditableContactRow({ contact, onToggle, orgId, onRefresh }: any) {
     return (
       <React.Fragment>
         <Dialog open={true} onOpenChange={(isOpen) => !isOpen && setIsEditing(false)}>
-            <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col p-0 overflow-hidden bg-slate-50/50">
-                <DialogHeader className="px-6 py-4 border-b bg-white flex-shrink-0">
-                    <DialogTitle className="text-xl font-semibold flex items-center gap-2">
-                        <Calendar className="w-5 h-5 text-indigo-600"/> Edit Live Event Details
-                    </DialogTitle>
-                </DialogHeader>
-                
-                <div className="p-6 space-y-8 bg-slate-50/50 overflow-y-auto flex-1">
-                    <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
-                        <h3 className="font-semibold text-sm mb-4">Event Basics</h3>
-                        <div>
-                            <label className="text-xs text-muted-foreground mb-1 block">Event Title</label>
-                            <Input value={editData.title || ''} onChange={e => setEditData({...editData, title: e.target.value})} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Date/Time</label>
-                                <Input value={editData.event_date || ''} onChange={e => setEditData({...editData, event_date: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Status</label>
-                                <Select value={editData.status || 'new'} onValueChange={(v) => setEditData({...editData, status: v})}>
-                                    <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="new">New</SelectItem>
-                                        <SelectItem value="ongoing">Ongoing</SelectItem>
-                                        <SelectItem value="expired">Expired</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
-                        <h3 className="font-semibold text-sm mb-4">External Links & Location</h3>
-                        <div>
-                            <label className="text-xs text-muted-foreground mb-1 block">Location</label>
-                            <Input value={editData.location || ''} onChange={e => setEditData({...editData, location: e.target.value})} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Hind URL</label>
-                                <Input value={editData.hind_url || ''} onChange={e => setEditData({...editData, hind_url: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Source URL</label>
-                                <Input value={editData.source_url || ''} onChange={e => setEditData({...editData, source_url: e.target.value})} />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="text-xs text-muted-foreground mb-1 block">Hind Status</label>
-                            <Select value={editData.hind_status || 'unpublished'} onValueChange={(v) => setEditData({...editData, hind_status: v})}>
-                                <SelectTrigger><SelectValue placeholder="Hind Status" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="unpublished">Unpublished</SelectItem>
-                                    <SelectItem value="published">Published</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </div>
-                
-                <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex-shrink-0">
-                    <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
-                    <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                        Save Event
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
+          <DialogContent className="sm:max-w-[500px] bg-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold">{contact.id.startsWith('new-') ? 'Add New Contact' : 'Edit Contact Details'}</DialogTitle>
+            </DialogHeader>
+            <div className="-mx-4 no-scrollbar max-h-[50vh] overflow-y-auto px-4 space-y-4">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Name</label>
+                <Input value={editData.name || ''} onChange={e => setEditData({...editData, name: e.target.value})} placeholder="Contact Name" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Job Title</label>
+                <Input value={editData.title || ''} onChange={e => setEditData({...editData, title: e.target.value})} placeholder="Job Title" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                <Input value={editData.email || ''} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="Email Address" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
+                <Input value={editData.phone || ''} onChange={e => setEditData({...editData, phone: e.target.value})} placeholder="Phone Number" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Social Profile Link</label>
+                <Input value={editData.social || ''} onChange={e => setEditData({...editData, social: e.target.value})} placeholder="LinkedIn URL etc." />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Source / Notes</label>
+                <Input value={editData.source || ''} onChange={e => setEditData({...editData, source: e.target.value})} placeholder="Where this was found" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+              <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                {contact.id.startsWith('new-') ? 'Add Contact' : 'Save Contact'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
-
-      <TableRow className="opacity-50">
-          <TableCell className="font-medium max-w-[200px] truncate">{event.title}</TableCell>
-          <TableCell><Badge variant="secondary" className="capitalize">{event.status}</Badge></TableCell>
-          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_date || 'N/A'}</span></TableCell>
-          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_time || 'N/A'}</span></TableCell>
-          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_date || 'N/A'}</span></TableCell>
-          <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_time || 'N/A'}</span></TableCell>
-          <TableCell className="max-w-[200px] whitespace-normal">
-            <span className="text-[11px]">{event.location || 'Online'}</span>
+        
+        {/* Render a placeholder row so the table doesn't collapse */}
+        <TableRow className="bg-muted/30">
+          <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-4">
+            Editing contact in dialog...
           </TableCell>
-          <TableCell>-</TableCell>
-          <TableCell>-</TableCell>
-          <TableCell>-</TableCell>
-          <TableCell>-</TableCell>
-          <TableCell>-</TableCell>
-      </TableRow>
+        </TableRow>
       </React.Fragment>
     );
   }
@@ -1480,7 +1489,7 @@ function ContactsPanel({ contacts, onToggle, orgId, onRefresh }: { contacts: Con
 }
 
 function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(event?.id?.startsWith('new-') || false);
   const [editData, setEditData] = useState(event);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -1528,8 +1537,20 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
             </SelectContent>
           </Select>
         </TableCell>
-        <TableCell><Input className="h-8 text-xs" value={editData.event_date || ''} onChange={e => setEditData({...editData, event_date: e.target.value})} placeholder="Date/Time" /></TableCell>
+        <TableCell>
+          <div className="flex flex-col gap-1">
+            <Input className="h-8 text-xs" type="date" value={editData.start_date || ''} onChange={e => setEditData({...editData, start_date: e.target.value})} />
+            <Input className="h-8 text-xs" type="time" value={editData.start_time || ''} onChange={e => setEditData({...editData, start_time: e.target.value})} />
+          </div>
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-col gap-1">
+            <Input className="h-8 text-xs" type="date" value={editData.end_date || ''} onChange={e => setEditData({...editData, end_date: e.target.value})} />
+            <Input className="h-8 text-xs" type="time" value={editData.end_time || ''} onChange={e => setEditData({...editData, end_time: e.target.value})} />
+          </div>
+        </TableCell>
         <TableCell><Input className="h-8 text-xs" value={editData.location || ''} onChange={e => setEditData({...editData, location: e.target.value})} placeholder="Location" /></TableCell>
+        <TableCell className="text-muted-foreground text-xs">{event.cohort_event_id || '-'}</TableCell>
         <TableCell><Input className="h-8 text-xs" value={editData.hind_url || ''} onChange={e => setEditData({...editData, hind_url: e.target.value})} placeholder="Hind URL" /></TableCell>
         <TableCell>
           <Select value={editData.hind_status || 'unpublished'} onValueChange={(v) => setEditData({...editData, hind_status: v})}>
@@ -1541,11 +1562,10 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
           </Select>
         </TableCell>
         <TableCell><Input className="h-8 text-xs" value={editData.source_url || ''} onChange={e => setEditData({...editData, source_url: e.target.value})} placeholder="Source URL" /></TableCell>
-        <TableCell className="text-muted-foreground">-</TableCell>
         <TableCell className="text-right">
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="default" onClick={handleSave} disabled={isSaving}>Save</Button>
-            <Button size="sm" variant="outline" onClick={() => { setIsEditing(false); if(event.id.startsWith('new-')) onRefresh(); }}>Cancel</Button>
+          <div className="flex flex-col gap-1 items-end">
+            <Button size="sm" variant="default" className="h-7 w-full text-xs" onClick={handleSave} disabled={isSaving}>Save</Button>
+            <Button size="sm" variant="outline" className="h-7 w-full text-xs" onClick={() => { setIsEditing(false); if(event.id.startsWith('new-')) onRefresh(); }}>Cancel</Button>
           </div>
         </TableCell>
       </TableRow>
@@ -1562,10 +1582,18 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
           {event.status}
         </Badge>
       </TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_date || 'N/A'}</span></TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.start_time || 'N/A'}</span></TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_date || 'N/A'}</span></TableCell>
-      <TableCell className="whitespace-nowrap"><span className="font-medium text-slate-700 text-[11px]">{event.end_time || 'N/A'}</span></TableCell>
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-slate-700 text-[11px]">{formatEventDateTime(event.start_date, event.start_time).date}</span>
+          <span className="text-[10px] text-muted-foreground">{formatEventDateTime(event.start_date, event.start_time).time}</span>
+        </div>
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-slate-700 text-[11px]">{formatEventDateTime(event.end_date, event.end_time).date}</span>
+          <span className="text-[10px] text-muted-foreground">{formatEventDateTime(event.end_date, event.end_time).time}</span>
+        </div>
+      </TableCell>
       <TableCell className="max-w-[200px] whitespace-normal">
         {(() => {
            const city = event.city;
@@ -1621,7 +1649,6 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setIsEditing(true)}><Edit className="w-4 h-4 mr-2"/> Edit</DropdownMenuItem>
               <DropdownMenuItem onClick={handleDelete} className="text-destructive"><Trash className="w-4 h-4 mr-2"/> Delete</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1651,10 +1678,8 @@ function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: OrgEve
             <TableRow>
               <TableHead>Event Title</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Start Date</TableHead>
-              <TableHead>Start Time</TableHead>
-              <TableHead>End Date</TableHead>
-              <TableHead>End Time</TableHead>
+              <TableHead>Start Date & Time</TableHead>
+              <TableHead>End Date & Time</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Hind Event URL</TableHead>
               <TableHead className="min-w-[120px] h-10 mt-1">
@@ -1685,6 +1710,16 @@ function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: OrgEve
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

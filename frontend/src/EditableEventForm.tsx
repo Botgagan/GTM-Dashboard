@@ -1,3 +1,4 @@
+import { toast } from "@/components/ui/toast";
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,11 +62,15 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
             });
 
             if (res.ok) {
+                toast.add({ type: "success", description: "Event updated successfully!" });
                 onRefresh();
                 onClose();
+            } else {
+                toast.add({ type: "error", description: "Failed to update event", priority: "high" });
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
+            toast.add({ type: "error", description: e.message || "Failed to update event", priority: "high" });
         } finally {
             setIsSaving(false);
         }
@@ -73,14 +78,14 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
 
     return (
         <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onClose()}>
-            <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col p-0 overflow-hidden bg-slate-50/50">
-                <DialogHeader className="px-6 py-4 border-b bg-white flex-shrink-0">
+            <DialogContent className="sm:max-w-[700px] bg-white">
+                <DialogHeader>
                     <DialogTitle className="text-xl font-semibold flex items-center gap-2">
                         <CalendarIcon className="w-5 h-5 text-indigo-600"/> Edit Event Details
                     </DialogTitle>
                     </DialogHeader>
                 
-                <div className="p-6 space-y-8 bg-slate-50/50 overflow-y-auto flex-1">
+                <div className="-mx-4 no-scrollbar max-h-[50vh] overflow-y-auto px-4 space-y-8">
                     {/* Basic Info */}
                     <div className="bg-white border rounded-lg p-5 shadow-sm space-y-4">
                         <h3 className="font-semibold text-sm mb-4">Event Basics</h3>
@@ -158,7 +163,7 @@ export function EditableEventForm({ scrape, onRefresh, onClose }: { scrape: any,
                         </div>
                     </div>
                 </div>
-                <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex-shrink-0">
+                <DialogFooter>
                     <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
                     <Button onClick={handleSave} disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
                         {isSaving ? <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> : null}

@@ -337,8 +337,8 @@ app.post('/api/org/:id/retry-manual', async (req, res) => {
 app.post('/api/pending-scrapes/:id/approve', async (req, res) => {
     try {
         const { approvePendingScrape } = await import('./pipeline');
-        await approvePendingScrape(req.params.id);
-        res.json({ success: true });
+        const result = await approvePendingScrape(req.params.id);
+        res.json(result || { success: true });
     } catch (e: any) {
         console.error(e);
         res.status(500).json({ error: e.message });
@@ -475,3 +475,4 @@ app.post('/api/sync-google-business', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
 });
+
