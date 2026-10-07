@@ -84,27 +84,39 @@ const API_BASE = 'http://localhost:3000/api';
 function formatEventDateTime(dateStr: string | null | undefined, timeStr: string | null | undefined) {
   if (!dateStr || dateStr === 'N/A') return { date: 'N/A', time: '' };
   
+  let formattedDate = dateStr;
+  let formattedTime = timeStr || '';
+
   try {
-    let parseStr = dateStr;
-    if (!dateStr.includes('T') && timeStr) {
-      // Ensure time string is at least HH:MM format for parsing
-      let t = timeStr.trim();
-      if (t.length <= 5 && t.includes(':')) t = t + ':00';
-      parseStr = `${dateStr}T${t}`;
-    } else if (!dateStr.includes('T')) {
-      parseStr = `${dateStr}T00:00:00`;
+    let cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+    let dDate = new Date(cleanDate + 'T00:00:00'); 
+    if (!isNaN(dDate.getTime())) {
+       formattedDate = dDate.toLocaleDateString();
     }
     
-    const d = new Date(parseStr);
-    if (!isNaN(d.getTime())) {
-      return {
-        date: d.toLocaleDateString(),
-        time: (timeStr && timeStr !== 'N/A') || dateStr.includes('T') ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
-      };
+    if (timeStr && timeStr !== 'N/A') {
+      let t = timeStr.trim();
+      if (t.match(/^\d{1,2}:\d{2}(:\d{2})?$/)) {
+         if (t.length <= 5) t += ':00';
+         let dTime = new Date(cleanDate + 'T' + t);
+         if (!isNaN(dTime.getTime())) {
+            formattedTime = dTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+         }
+      } else {
+         formattedTime = timeStr; 
+      }
+    } else if (dateStr.includes('T') && !dateStr.endsWith('T00:00:00.000Z')) {
+       let d = new Date(dateStr);
+       if (!isNaN(d.getTime())) {
+          formattedDate = d.toLocaleDateString();
+          formattedTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+       }
+    } else if (dateStr.endsWith('T00:00:00.000Z')) {
+       formattedTime = '';
     }
   } catch(e) {}
   
-  return { date: dateStr, time: timeStr || '' };
+  return { date: formattedDate, time: formattedTime };
 }
 
 function getDomainName(urlStr: string | null): string {
@@ -304,7 +316,7 @@ function EditableOrgRow({ org, expandedOrg, toggleExpand, handleSendToInstantly,
   );
 }
 
-function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrapes: any[], orgs: any[], onRefresh: () => void }) {
+function ScrapedEventsPanel({ pendingScrapes, orgs, eventTypes, onRefresh }: { pendingScrapes: any[], orgs: any[], eventTypes: any[], onRefresh: () => void }) {
   const [expandedPending, setExpandedPending] = useState<{ id: string, type: 'org' | 'contacts' } | null>(null);
   
   const [filterOpen, setFilterOpen] = useState(false);
@@ -417,6 +429,7 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
             <TableHead>Start Date & Time</TableHead>
             <TableHead>End Date & Time</TableHead>
             <TableHead>Location</TableHead>
+            <TableHead>Event Type</TableHead>
             <TableHead>Source URL</TableHead>
             <TableHead>Org Details</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -425,13 +438,13 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
         <TableBody>
           {filteredScrapes.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
                 No pending scraped events.
               </TableCell>
             </TableRow>
           ) : (
             filteredScrapes.map((scrape: any) => (
-              <PendingEventRow key={scrape.id} scrape={scrape} orgs={orgs} onRefresh={onRefresh} onViewOrg={() => setExpandedPending({ id: scrape.id, type: 'org' })} />
+              <PendingEventRow key={scrape.id} scrape={scrape} orgs={orgs} eventTypes={eventTypes} onRefresh={onRefresh} onViewOrg={() => setExpandedPending({ id: scrape.id, type: 'org' })} />
             ))
           )}
         </TableBody>
@@ -442,17 +455,41 @@ function ScrapedEventsPanel({ pendingScrapes, orgs, onRefresh }: { pendingScrape
     </div>
   );
 }
-function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, orgs: any[], onRefresh: () => void, onViewOrg: () => void }) {
+function PendingEventRow({ scrape, orgs, eventTypes, onRefresh, onViewOrg }: { scrape: any, orgs: any[], eventTypes: any[], onRefresh: () => void, onViewOrg: () => void }) {
   const [isLinking, setIsLinking] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [isApproving, setIsApproving] = useState(false);
   const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const [optimisticEventTypeId, setOptimisticEventTypeId] = useState<string | null>(null);
   
   const payload = typeof scrape.payload === 'string' ? JSON.parse(scrape.payload) : scrape.payload;
   const ev = payload.mappedEventData;
 
   const isLinked = !!scrape.linked_org_id;
   const linkedOrgName = scrape.linked_org_name || "Existing Org";
+
+  const handleEventTypeChange = async (newTypeId: string) => {
+    try {
+      setOptimisticEventTypeId(newTypeId);
+      const updatedPayload = {
+        ...payload,
+        mappedEventData: {
+          ...ev,
+          eventTypeId: newTypeId
+        }
+      };
+      await fetch(`${API_BASE}/pending-scrapes/${scrape.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: updatedPayload })
+      });
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+      setOptimisticEventTypeId(null);
+    }
+  };
+
+  const resolvedEventTypeId = optimisticEventTypeId || (eventTypes.find(t => t.id === ev?.eventTypeId) ? ev.eventTypeId : eventTypes[0]?.id);
 
   const handleLinkOrg = async (orgId: string | null) => {
     try {
@@ -473,9 +510,25 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
     }
   };
 
+
   const handleApprove = async () => {
     setIsApproving(true);
     try {
+      if (ev?.eventTypeId !== resolvedEventTypeId) {
+          const updatedPayload = {
+            ...payload,
+            mappedEventData: {
+              ...ev,
+              eventTypeId: resolvedEventTypeId
+            }
+          };
+          await fetch(`${API_BASE}/pending-scrapes/${scrape.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: updatedPayload })
+          });
+      }
+      
       const res = await fetch(`${API_BASE}/pending-scrapes/${scrape.id}/approve`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
@@ -553,16 +606,62 @@ function PendingEventRow({ scrape, orgs, onRefresh, onViewOrg }: { scrape: any, 
       </TableCell>
       <TableCell className="max-w-[200px] whitespace-normal">
         {(() => {
-           const city = ev?.city || payload.contactInfo?.city;
-           const area = payload.finalLocation || ev?.location;
-           if (!city && (!area || area === 'Online')) return <span className="font-medium text-[11px]">Online</span>;
+           let city = ev?.city;
+           if (!city || city.toLowerCase() === 'unknown' || city.toLowerCase() === 'n/a') {
+               city = payload.contactInfo?.city || city;
+           }
+           let area = payload.finalLocation || ev?.location;
+           
+           if ((!city || city.toLowerCase() === 'unknown') && (!area || area === 'Online')) {
+               return <span className="font-medium text-[11px]">Online</span>;
+           }
+           
            return (
              <div className="flex flex-col gap-0.5">
-               {city && <span className="font-semibold text-slate-900 text-[11px]">{city}</span>}
-               {area && area !== 'Online' && <span className="text-[10px] text-muted-foreground leading-tight">{area}</span>}
+               {city && city.toLowerCase() !== 'unknown' && <span className="font-semibold text-slate-900 text-[11px]">{city}</span>}
+               {area && <span className="text-[10px] text-muted-foreground leading-tight">{area}</span>}
              </div>
            );
         })()}
+      </TableCell>
+      <TableCell>
+        {eventTypes.length === 0 ? (
+          <div className="h-8 text-xs w-[140px] border border-input rounded-md flex items-center px-3 text-muted-foreground bg-slate-50/50">Loading...</div>
+        ) : (
+          <Select 
+            value={resolvedEventTypeId} 
+            onValueChange={handleEventTypeChange} 
+            disabled={isResolved}
+          >
+            <SelectTrigger className="h-8 text-xs w-[140px] relative flex items-center justify-between overflow-hidden">
+              {(() => {
+                const selected = eventTypes.find(t => t.id === resolvedEventTypeId);
+                if (selected) {
+                  return (
+                    <div className="flex items-center gap-2 flex-1 min-w-0 z-10">
+                      {selected.image && <img src={selected.image} alt={selected.name} className="w-4 h-4 object-cover rounded-sm shrink-0" />}
+                      <span className="truncate">{selected.name}</span>
+                    </div>
+                  );
+                }
+                return <span className="text-muted-foreground flex-1 text-left min-w-0 truncate z-10">Event Type</span>;
+              })()}
+              <div className="absolute inset-0 opacity-0 pointer-events-none flex items-center justify-start overflow-hidden">
+                <SelectValue placeholder="Event Type" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              {eventTypes.map(t => (
+                <SelectItem key={t.id} value={t.id}>
+                  <div className="flex items-center gap-2">
+                    {t.image && <img src={t.image} alt={t.name} className="w-4 h-4 object-cover rounded-sm" />}
+                    <span className="truncate">{t.name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </TableCell>
       <TableCell>
         <a href={scrape.source_url} target="_blank" rel="noreferrer" className="text-primary hover:underline text-[11px] break-all flex items-center gap-1">
@@ -817,6 +916,7 @@ function ScrapedUrlsPanel({ setUrlsCount, urlProcessingUI }: { setUrlsCount: (n:
 export default function App() {
   const [globalCityFilter, setGlobalCityFilter] = useState('All');
   const [cities, setCities] = useState<string[]>([]);
+  const [eventTypes, setEventTypes] = useState<any[]>([]);
   const [url, setUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState<{ type: string; message: string }[]>([]);
@@ -825,7 +925,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'pending' | 'claimed' | 'unclaimed' | 'failed' | 'urls'>('pending');
   const [expandedOrg, setExpandedOrg] = useState<{ id: string; type: 'contacts' | 'events' } | null>(null);
   const [urlsCount, setUrlsCount] = useState(0);
-  const [orgDetails, setOrgDetails] = useState<{ contacts: Contact[]; events: OrgEvent[] }>({ contacts: [], events: [] });
+  const [orgDetails, setOrgDetails] = useState<{ contacts: Contact[]; events: any[] }>({ contacts: [], events: [] });
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [sendingToInstantly, setSendingToInstantly] = useState<string | null>(null);
   const [linkingManualOrg, setLinkingManualOrg] = useState<string | null>(null);
@@ -870,6 +970,16 @@ export default function App() {
     return true;
   });
 
+  const fetchEventTypes = async () => {
+    try {
+      const res = await fetch('https://devapi.cohort.social/eventv2/getEventTypes');
+      const data = await res.json();
+      if (data && data.data && data.data.list) {
+        setEventTypes(data.data.list);
+      }
+    } catch (e) { console.error('Failed to fetch event types', e); }
+  };
+
   const fetchCities = async () => {
     try {
       const res = await fetch(`${API_BASE}/cities`);
@@ -900,11 +1010,13 @@ export default function App() {
           const detailsData = await resDetails.json();
           setOrgDetails(prev => ({ ...prev, contacts: detailsData }));
         } else {
-          const resDetails = await fetch(`${API_BASE}/org/${expandedOrg.id}/events`);
+          const qEvent = globalCityFilter !== 'All' ? `?city=${encodeURIComponent(globalCityFilter)}` : '';
+          const resDetails = await fetch(`${API_BASE}/org/${expandedOrg.id}/events${qEvent}`);
           const detailsData = await resDetails.json();
           setOrgDetails(prev => ({ ...prev, events: detailsData }));
         }
       }
+      fetchCities();
     } catch (err) {
       console.error('Failed to fetch dashboard data', err);
     }
@@ -912,6 +1024,7 @@ export default function App() {
 
   useEffect(() => {
     fetchCities();
+    fetchEventTypes();
   }, []);
 
   useEffect(() => {
@@ -964,10 +1077,12 @@ export default function App() {
         const data = await res.json();
         setOrgDetails(prev => ({ ...prev, contacts: data }));
       } else {
-        const res = await fetch(`${API_BASE}/org/${orgId}/events`);
+        const qEvent = globalCityFilter !== 'All' ? `?city=${encodeURIComponent(globalCityFilter)}` : '';
+        const res = await fetch(`${API_BASE}/org/${orgId}/events${qEvent}`);
         const data = await res.json();
         setOrgDetails(prev => ({ ...prev, events: data }));
       }
+      fetchCities();
     } catch (err) {
       console.error('Failed to fetch details', err);
     } finally {
@@ -1104,7 +1219,7 @@ export default function App() {
 
           <div className="rounded-md border mx-6 mb-6">
             {activeTab === 'pending' ? (
-              <ScrapedEventsPanel pendingScrapes={pendingScrapes} orgs={orgs} onRefresh={fetchDashboardData} />
+              <ScrapedEventsPanel pendingScrapes={pendingScrapes} orgs={orgs} eventTypes={eventTypes} onRefresh={fetchDashboardData} />
             ) : activeTab === 'urls' ? (
               <ScrapedUrlsPanel 
                 setUrlsCount={setUrlsCount} 
@@ -1658,7 +1773,7 @@ function EditableEventRow({ event, orgId, onSendEvent, onRefresh }: any) {
   );
 }
 
-function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: OrgEvent[], orgId: string, onSendEvent?: (eventId: string) => void, onRefresh: () => void }) {
+function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: any[], orgId: string, onSendEvent?: (eventId: string) => void, onRefresh: () => void }) {
   const [localEvents, setLocalEvents] = useState(events);
 
   useEffect(() => {
@@ -1710,6 +1825,7 @@ function EventsPanel({ events, orgId, onSendEvent, onRefresh }: { events: OrgEve
     </div>
   );
 }
+
 
 
 

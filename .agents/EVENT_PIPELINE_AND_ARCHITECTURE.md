@@ -160,3 +160,12 @@ When a city is selected from the Master Filter, a cascading logic applies across
 - **Cohort API:** The proprietary backend API where organizations, invite links, and events are pushed.
 - **Instantly API:** Used for pushing extracted leads for automated cold email outreach.
 - **Apify:** (Integrated/Planned) Used for scheduled, cloud-based scraping of platforms like Eventbrite and SortMyScene.
+
+### Dynamic Event Types Update
+- **Event Types Selection**: The frontend now dynamically fetches event types from the Cohort API (\https://devapi.cohort.social/eventv2/getEventTypes\) on initialization.
+- **Pre-Approval Editing**: In the "Scraped Events" tab, users can now select the specific Event Type from a dropdown for each pending event before approving it.
+- **Dynamic Submission**: When pushed to the Cohort API (\submitEventToCohortApi\ in \piClient.ts\), the pipeline uses the user-selected \eventTypeId\ from the payload. If no event type is selected, it falls back to the default 'Plays' UUID (\84bf505a-5f86-4c2b-a81a-4683cb45eabc\).
+
+### Image Extraction & Upload
+- **Robust JSON-LD Parsing**: The scraper (`base.ts`) accurately parses the hidden `ld.image` metadata—even when it's formatted as an Array or an ImageObject dictionary. 
+- **Real Thumbnails**: This guarantees `payload.images` receives a real HTTP URL instead of falling back to the `"string"` literal. Consequently, when the event is approved, `apiClient.ts` successfully downloads the actual venue poster and submits it as a binary buffer (`image/jpeg`) to the Cohort API, effectively replacing the dummy 1x1 transparent pixel previously used to bypass validation constraints.

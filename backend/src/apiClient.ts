@@ -146,7 +146,7 @@ export async function submitEventToCohortApi(payload: HindEventPayload, orgId: s
     
     parsedPayload.sacCodeId = "cf19790e-aad9-4711-8deb-6402708bfd54"; // Real UUID from database
     parsedPayload.gstType = "inclusive";
-    parsedPayload.eventTypeId = "84bf505a-5f86-4c2b-a81a-4683cb45eabc"; // Real UUID from database
+    if (!parsedPayload.eventTypeId) parsedPayload.eventTypeId = "84bf505a-5f86-4c2b-a81a-4683cb45eabc"; // Default to Plays if missing
     if (!parsedPayload.refundPolicy) {
         parsedPayload.refundPolicy = "No Refunds";
     }
@@ -233,7 +233,7 @@ export async function submitEventToCohortApi(payload: HindEventPayload, orgId: s
     return null;
 }
 
-export async function createSubcommunity(organizerName: string, phoneStr: string, emailStr: string): Promise<string | null> {
+export async function createSubcommunity(organizerName: string, phoneStr: string, emailStr: string, imageUrl?: string): Promise<string | null> {
     const apiUrl = `${API_BASE_URL}/organization`;
     console.log(`\n--- CREATING SUBCOMMUNITY FOR: ${organizerName} ---`);
     
@@ -250,11 +250,8 @@ export async function createSubcommunity(organizerName: string, phoneStr: string
     const primaryPhone = phoneMatch ? phoneMatch[1].trim() : "";
 
     // Hardcode the original adminId that is actually a member of the community
-        let adminId = 'df0e077b-a203-48a3-acc1-41da79656543';
-    
-    // The Cohort API expects the Community Membership ID, NOT the User's dbId!
-    // Using the ID provided by the user's admin list response.
-    adminId = 'c32158f7-91ab-40a2-a0bc-504d9a4f96fd'; 
+        let adminId = '28f6f32a-97fc-4b80-b1dd-30a3933858a4';
+    console.log('---> USING ADMIN ID:', adminId); 
 
     const contactInfoObj: any = { email: primaryEmail };
     if (primaryPhone) {
@@ -266,14 +263,31 @@ export async function createSubcommunity(organizerName: string, phoneStr: string
     formData.append('joiningMethod', 'open-signup');
     formData.append('lockPermissionForOrganization', 'true');
     formData.append('adminId', adminId);
-    formData.append('name', `${organizerName} ${Date.now()}`);
+    formData.append('name', organizerName);
     formData.append('contactInfo', JSON.stringify(contactInfoObj));
     formData.append('philosophy', '684ee90a-6498-4c58-a425-bdbe93886eb7');
     formData.append('community', '69c6a422-3638-46b9-b27e-99c844adcfd8');
     
-    // Add dummy image
-    const dummyBuffer = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
-    formData.append('image', dummyBuffer, { filename: 'dummy.jpg', contentType: 'image/jpeg' });
+    // Attach real image if provided, otherwise fallback to dummy
+    let imageAttached = false;
+    if (imageUrl && imageUrl.startsWith('http')) {
+        try {
+            const axios = require('axios');
+            console.log(`Downloading org image from ${imageUrl}...`);
+            const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            const buffer = Buffer.from(imageResponse.data, 'binary');
+            formData.append('image', buffer, { filename: 'org.jpg', contentType: 'image/jpeg' });
+            imageAttached = true;
+            console.log(`? Org Image successfully attached.`);
+        } catch(e) {
+            console.log(`?? Failed to download org image. Falling back to dummy.`);
+        }
+    }
+    
+    if (!imageAttached) {
+        const dummyBuffer = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+        formData.append('image', dummyBuffer, { filename: 'dummy.jpg', contentType: 'image/jpeg' });
+    }
 
     const headers: any = {
         'accept': 'application/json',
@@ -373,6 +387,10 @@ export async function getSubcommunityDetails(orgId: string): Promise<any | null>
     }
     return null;
 }
+
+
+
+
 
 
 

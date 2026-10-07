@@ -266,7 +266,8 @@ export async function approvePendingScrape(pendingId: string) {
     } else {
         // Standard Flow: CREATE BRAND NEW SUBCOMMUNITY
         console.log(`??? No link found. Creating brand new subcommunity for ${primaryOrganizer}`);
-        subcommunityId = await createSubcommunity(primaryOrganizer, contactInfo.emails[0] || "", contactInfo.phones[0] || "");
+        const orgImageToUse = p.logo || (p.images && p.images.length > 0 ? (Array.isArray(p.images) ? p.images[0] : p.images) : undefined);
+        subcommunityId = await createSubcommunity(primaryOrganizer, contactInfo.emails[0] || "", contactInfo.phones[0] || "", orgImageToUse);
     }
     
     if (subcommunityId) {
@@ -339,6 +340,7 @@ export async function approvePendingScrape(pendingId: string) {
     let approvalStatus = "pending";
 
     if (subcommunityId) {
+        if (!mappedEventData.images && p.images) mappedEventData.images = p.images;
         const apiResponse: any = await submitEventToCohortApi(mappedEventData, subcommunityId);
         const eventDetails = apiResponse?.data?.eventDetails || apiResponse?.eventDetails || apiResponse;
         newEventId = eventDetails?.id || eventDetails?.occurenceId || "";
@@ -362,7 +364,7 @@ export async function approvePendingScrape(pendingId: string) {
         endDate: mappedEventData.endDate && mappedEventData.endDate !== "2026-08-15" ? mappedEventData.endDate : undefined,
         endTime: mappedEventData.endTime,
         location: finalLocation,
-        city: contactInfo.city || p.locationStr || mappedEventData.city,
+        city: mappedEventData.city || p.locationStr || contactInfo.city || 'Unknown',
         hindUrl: eventUrl,
         sourceUrl: targetUrl,
         cohortEventId: newEventId,
@@ -502,6 +504,10 @@ export async function retryManualOrg(localOrgId: string, manualOrgId: string) {
 
     console.log(`??? Manual Organization Link Successful!`);
 }
+
+
+
+
 
 
 

@@ -221,7 +221,19 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
     }
 
     let title = ld.name || scrapedEvent.title || "Untitled Event";
-    const imageUrl = ld.image || scrapedEvent.imageUrl || "string";
+    let imageUrl = "string";
+    if (ld.image) {
+        if (typeof ld.image === 'string') {
+            imageUrl = ld.image;
+        } else if (Array.isArray(ld.image) && ld.image.length > 0) {
+            imageUrl = typeof ld.image[0] === 'string' ? ld.image[0] : (ld.image[0].url || "string");
+        } else if (ld.image.url) {
+            imageUrl = ld.image.url;
+        }
+    }
+    if (imageUrl === "string" && scrapedEvent.imageUrl) {
+        imageUrl = scrapedEvent.imageUrl;
+    }
     const description = ld.description || scrapedEvent.eventContent || "No description provided.";
     
     // --- 2. LLM INFERENCE ---
@@ -283,7 +295,26 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
             if (aiData.refundPolicy) refundPolicy = aiData.refundPolicy;
             if (aiData.durationMinutes) duration = aiData.durationMinutes;
             if (aiData.startTime && startTime === "06:00:00Z") startTime = aiData.startTime;
-            if (aiData.endTime) aiEndTime = aiData.endTime;
+            
+            // Calculate end time mathematically using duration to avoid AI timezone hallucinations
+            if (aiData.startTime && aiData.durationMinutes) {
+                const s = aiData.startTime.split(':');
+                if (s.length >= 2) {
+                    const dur = parseInt(aiData.durationMinutes);
+                    if (dur && dur > 0 && dur !== 270) {
+                        let totalMinutes = parseInt(s[0]) * 60 + parseInt(s[1]) + dur;
+                        let hh = Math.floor(totalMinutes / 60) % 24;
+                        let mm = totalMinutes % 60;
+                        aiEndTime = `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}:00`;
+                    } else if (aiData.endTime) {
+                        aiEndTime = aiData.endTime;
+                    }
+                } else if (aiData.endTime) {
+                    aiEndTime = aiData.endTime;
+                }
+            } else if (aiData.endTime) {
+                aiEndTime = aiData.endTime;
+            }
             if (aiData.latitude) latitude = aiData.latitude;
             if (aiData.longitude) longitude = aiData.longitude;
             if (aiData.price && aiData.price !== "0") lowestPrice = String(aiData.price).replace(/[^0-9.]/g, ''); 
@@ -387,7 +418,7 @@ export const genericMapEvent = async (scrapedEvent: any): Promise<HindEventPaylo
         moderators: dummyUuid,
         webLink: scrapedEvent.url || "string",
         date: date,
-        eventTypeId: dummyUuid,
+        eventTypeId: "",
         longitude: longitude,
         startTime: startTime,
         totalTicket: "100",

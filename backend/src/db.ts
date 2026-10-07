@@ -169,7 +169,7 @@ export async function markOrgAsContacted(orgId: string) {
 export async function getOrgEvents(orgId: string, city?: string) {
     if (city) {
         const res = await pool.query(
-            `SELECT * FROM events WHERE org_id = $1 AND city ILIKE $2 ORDER BY created_at DESC`,
+            `SELECT * FROM events WHERE org_id = $1 AND (city ILIKE $2 OR location ILIKE $2) ORDER BY created_at DESC`,
             [orgId, `%${city}%`]
         );
         return res.rows;
@@ -277,7 +277,7 @@ export async function getDashboardData(city?: string) {
     let params: any[] = [];
     
     if (city) {
-        query += ` LEFT JOIN events e ON e.org_id = o.id AND e.location ILIKE $1`;
+        query += ` LEFT JOIN events e ON e.org_id = o.id AND (e.location ILIKE $1 OR e.city ILIKE $1)`;
         params.push(`%${city}%`);
     } else {
         query += ` LEFT JOIN events e ON e.org_id = o.id`;
@@ -297,14 +297,49 @@ export async function getDashboardData(city?: string) {
 
 
 export async function getCities() {
+    // 1. Get cities from approved events
     const res = await pool.query(`SELECT DISTINCT location FROM events WHERE location IS NOT NULL`);
     const rawLocations = res.rows.map(r => r.location);
+    
+    // 2. Get cities from pending scraped events (JSON payload)
+    const pendingRes = await pool.query(`
+        SELECT 
+            payload::jsonb -> 'contactInfo' ->> 'city' as city1,
+            payload::jsonb ->> 'locationStr' as city2,
+            payload::jsonb ->> 'finalLocation' as city3,
+            payload::jsonb -> 'mappedEventData' ->> 'city' as city4,
+            payload::jsonb -> 'mappedEventData' ->> 'location' as city5
+        FROM pending_scrapes
+    `);
+    
     const cities = new Set<string>();
+    
+    // Process approved events
     for (const loc of rawLocations) {
         const parts = loc.split(',');
         const city = parts[parts.length - 1].trim();
-        if (city) cities.add(city);
+        if (city && city.toLowerCase() !== 'unknown' && city.toLowerCase() !== 'n/a') {
+            const formattedCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
+            cities.add(formattedCity);
+        }
     }
+    
+    // Process pending events
+    for (const row of pendingRes.rows) {
+        const possibleCities = [row.city1, row.city2, row.city3, row.city4, row.city5];
+        for (const loc of possibleCities) {
+            if (loc && typeof loc === 'string') {
+                const parts = loc.split(',');
+                const city = parts[parts.length - 1].trim();
+                if (city && city.toLowerCase() !== 'unknown' && city.toLowerCase() !== 'n/a') {
+            const formattedCity = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
+                    cities.add(formattedCity);
+                    break; // Just need one valid city per pending event to populate the master list
+                }
+            }
+        }
+    }
+    
     return Array.from(cities).sort();
 }
 
@@ -319,7 +354,7 @@ export async function getPendingScrapes(city?: string) {
     `;
     if (city) {
         const res = await pool.query(
-            query + ` WHERE ps.payload::jsonb -> 'contactInfo' ->> 'city' ILIKE $1 ORDER BY ps.created_at DESC`,
+            query + ` WHERE (ps.payload::jsonb -> 'contactInfo' ->> 'city' ILIKE $1 OR ps.payload::jsonb ->> 'locationStr' ILIKE $1 OR ps.payload::jsonb ->> 'finalLocation' ILIKE $1 OR ps.payload::jsonb -> 'mappedEventData' ->> 'city' ILIKE $1 OR ps.payload::jsonb -> 'mappedEventData' ->> 'location' ILIKE $1) ORDER BY ps.created_at DESC`,
             [`%${city}%`]
         );
         return res.rows;
@@ -383,3 +418,4 @@ export async function getAllOrganizationsForLLM() {
     const res = await pool.query(`SELECT id, name FROM organizations WHERE subcommunity_id IS NOT NULL`);
     return res.rows;
 }
+
